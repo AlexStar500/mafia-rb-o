@@ -81,7 +81,7 @@ function queryString(values) {
 
 export class App {
   constructor({ settings = loadSettings(), base = null } = {}) {
-    this.version = "2.0.17";
+    this.version = "2.0.18";
     this.settings = normalizeSettings(settings);
     this.playerId = createId("p");
     this.session = null;

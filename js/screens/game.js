@@ -17,6 +17,20 @@ import { ROLES, TEAMS } from "../data/roles.js";
 import { formatClock, formatShortTime, playersLabel, pluralRu } from "../core/format.js";
 import { asset } from "../core/assets.js";
 
+
+/**
+ * Paint only when the markup actually changed. The host rebuilds its view on
+ * every tick, so hammering innerHTML re-created identical panels and made them
+ * flicker (and reset scroll/entry state).
+ */
+function mountStable(target, template) {
+  if (!target) return target;
+  const markup = String(template ?? "");
+  if (target.__stableMarkup === markup) return target;
+  target.__stableMarkup = markup;
+  return mount(target, markup);
+}
+
 const ACTION_LABEL = Object.freeze({
   kill: "Убить",
   heal: "Лечить",
@@ -98,6 +112,18 @@ function targetName(view, id) {
   return (view.players ?? []).find((player) => player.id === id)?.name ?? "—";
 }
 
+/**
+ * Identity of a view for render skipping. `now` and `session.syncAt` change on
+ * every tick, so they must not force a re-render — the countdown has its own
+ * timer. Chat is reduced to its length and last sequence number.
+ */
+function viewSignatureOf(next) {
+  const chat = Array.isArray(next.chat) ? next.chat : [];
+  const lastSeq = chat.length ? (chat[chat.length - 1].seq ?? 0) : 0;
+  const session = next.session ? { ...next.session, syncAt: 0 } : null;
+  return `${chat.length}:${lastSeq}:${JSON.stringify({ ...next, now: 0, chat: undefined, session })}`;
+}
+
 export function createGameScreen(ctx, initialView) {
   const app = ctx.app;
   let view = initialView;
@@ -114,6 +140,8 @@ export function createGameScreen(ctx, initialView) {
   let lastChatSeq = 0;
   let lastMessageSfx = 0;
   let endModal = null;
+  let viewSignature = "";
+  let clickHandler = null;
 
   const htmlScreen = html`<div class="screen game-screen">
     <div class="game" data-game>
@@ -210,7 +238,7 @@ export function createGameScreen(ctx, initialView) {
         </div>`
       : "";
 
-    mount(
+    mountStable(
       node,
       html`<div class="hud hud--${info.tone}">
         <div class="hud__main">
@@ -285,7 +313,7 @@ export function createGameScreen(ctx, initialView) {
     if (view.phase === "dawn" && lastNight) {
       const deaths = lastNight.deaths ?? [];
       const byId = new Map((view.players ?? []).map((player) => [player.id, player]));
-      mount(
+      mountStable(
         node,
         html`<div class="phase-banner phase-banner--dawn">
           <span class="phase-banner__icon">${icon(deaths.length ? "skull" : "sun", { size: 22 })}</span>
@@ -315,7 +343,7 @@ export function createGameScreen(ctx, initialView) {
 
     if (view.phase === "verdict" && view.votes?.revealed) {
       const result = view.votes.revealed;
-      mount(
+      mountStable(
         node,
         html`<div class="phase-banner phase-banner--verdict">
           <span class="phase-banner__icon">${icon("gavel", { size: 22 })}</span>
@@ -331,7 +359,7 @@ export function createGameScreen(ctx, initialView) {
     }
 
     if (view.phase === "lastWords" && view.lastWords) {
-      mount(
+      mountStable(
         node,
         html`<div class="phase-banner phase-banner--last">
           <span class="phase-banner__icon">${icon("scroll", { size: 22 })}</span>
@@ -348,7 +376,7 @@ export function createGameScreen(ctx, initialView) {
     }
 
     if (view.phase === "ended" && view.winner) {
-      mount(
+      mountStable(
         node,
         html`<div class="phase-banner phase-banner--end phase-banner--${view.winner.team}">
           <span class="phase-banner__icon">${icon(view.winner.team === "mafia" ? "blade" : view.winner.team === "neutral" ? "joker" : "crown", { size: 22 })}</span>
@@ -363,7 +391,7 @@ export function createGameScreen(ctx, initialView) {
       return;
     }
 
-    mount(node, "");
+    mountStable(node, "");
   }
 
   // -----------------------------------------------------------------------
@@ -390,7 +418,7 @@ export function createGameScreen(ctx, initialView) {
     const isVoting = view.phase === "voting";
     const isNight = view.phase === "night";
 
-    mount(
+    mountStable(
       qs("[data-game-players]", root()),
       html`${(view.players ?? []).map((player) => {
         const self = isSelf(view, player);
@@ -454,7 +482,7 @@ export function createGameScreen(ctx, initialView) {
     const action = view.night?.action;
 
     if (view.spectator) {
-      mount(
+      mountStable(
         node,
         html`<section class="action-dock action-dock--spectator">
           <div class="action-dock__icon">${icon("eye", { size: 20 })}</div>
@@ -471,7 +499,7 @@ export function createGameScreen(ctx, initialView) {
     }
 
     if (view.phase === "ended") {
-      mount(
+      mountStable(
         node,
         html`<section class="action-dock action-dock--end">
           <div class="action-dock__icon">${icon("crown", { size: 20 })}</div>
@@ -491,7 +519,7 @@ export function createGameScreen(ctx, initialView) {
     if (view.phase === "voting") {
       const myVote = view.votes?.myVote;
       const votedName = myVote && myVote !== "skip" ? targetName(view, myVote) : null;
-      mount(
+      mountStable(
         node,
         html`<section class="action-dock action-dock--vote ${!self.alive ? "is-disabled" : ""}">
           <div class="action-dock__icon">${icon("vote", { size: 20 })}</div>
@@ -520,7 +548,7 @@ export function createGameScreen(ctx, initialView) {
 
     if (view.phase === "night") {
       if (!self.alive) {
-        mount(
+        mountStable(
           node,
           html`<section class="action-dock action-dock--dead">
             <div class="action-dock__icon">${icon("skull", { size: 20 })}</div>
@@ -530,7 +558,7 @@ export function createGameScreen(ctx, initialView) {
         return;
       }
       if (!action) {
-        mount(
+        mountStable(
           node,
           html`<section class="action-dock action-dock--sleep">
             <div class="action-dock__icon">${icon("moon", { size: 20 })}</div>
@@ -542,7 +570,7 @@ export function createGameScreen(ctx, initialView) {
       const contract = view.night?.contract;
       const showContract = view.self?.roleId === "assassin";
       const selectedName = active?.queued ? targetName(view, active.queued) : null;
-      mount(
+      mountStable(
         node,
         html`<section class="action-dock action-dock--night">
           <div class="action-dock__icon">${icon(action.type === "heal" ? "heart" : action.type === "check" ? "search" : action.type === "contract" ? "blade" : "target", { size: 20 })}</div>
@@ -569,7 +597,7 @@ export function createGameScreen(ctx, initialView) {
     }
 
     if (view.phase === "lastWords") {
-      mount(
+      mountStable(
         node,
         html`<section class="action-dock action-dock--last">
           <div class="action-dock__icon">${icon("scroll", { size: 20 })}</div>
@@ -583,7 +611,7 @@ export function createGameScreen(ctx, initialView) {
     }
 
     if (view.phase === "dawn" || view.phase === "verdict") {
-      mount(
+      mountStable(
         node,
         html`<section class="action-dock action-dock--wait">
           <div class="action-dock__icon">${icon("clock", { size: 20 })}</div>
@@ -593,7 +621,7 @@ export function createGameScreen(ctx, initialView) {
       return;
     }
 
-    mount(
+    mountStable(
       node,
       html`<section class="action-dock action-dock--day">
         <div class="action-dock__icon">${icon("chat", { size: 20 })}</div>
@@ -617,7 +645,7 @@ export function createGameScreen(ctx, initialView) {
     if (!node || !view) return;
     const self = view.self ?? {};
     if (view.spectator) {
-      mount(
+      mountStable(
         node,
         html`<div class="role-panel role-panel--spectator">
           <div class="role-panel__head">
@@ -634,11 +662,11 @@ export function createGameScreen(ctx, initialView) {
     }
     const role = self.roleId ? ROLES[self.roleId] : null;
     if (!role) {
-      mount(node, html`<div class="role-panel role-panel--empty"><p class="muted">Роль появится после старта.</p></div>`);
+      mountStable(node, html`<div class="role-panel role-panel--empty"><p class="muted">Роль появится после старта.</p></div>`);
       return;
     }
     const team = TEAMS[role.team];
-    mount(
+    mountStable(
       node,
       html`<div class="role-panel" style="--role-color:${role.color};--team-color:${team?.color ?? role.color}">
         <div class="role-panel__head">
@@ -673,10 +701,10 @@ export function createGameScreen(ctx, initialView) {
     const notes = self.notes ?? [];
     const investigations = self.investigations ?? [];
     if (!notes.length && !investigations.length) {
-      mount(node, html`<p class="game-empty">${icon("edit", { size: 17 })}<span>${view.spectator ? "Наблюдателям записи не нужны — роли уже открыты." : "Здесь появятся проверки шерифа, лечение доктора и другие личные заметки."}</span></p>`);
+      mountStable(node, html`<p class="game-empty">${icon("edit", { size: 17 })}<span>${view.spectator ? "Наблюдателям записи не нужны — роли уже открыты." : "Здесь появятся проверки шерифа, лечение доктора и другие личные заметки."}</span></p>`);
       return;
     }
-    mount(
+    mountStable(
       node,
       html`${investigations.length
         ? html`<div class="notes-block">
@@ -709,10 +737,10 @@ export function createGameScreen(ctx, initialView) {
     if (!node || !view) return;
     const entries = (view.log ?? []).slice(-14);
     if (!entries.length) {
-      mount(node, html`<p class="game-empty">${icon("scroll", { size: 17 })}<span>Хроника начнётся с первым событием.</span></p>`);
+      mountStable(node, html`<p class="game-empty">${icon("scroll", { size: 17 })}<span>Хроника начнётся с первым событием.</span></p>`);
       return;
     }
-    mount(
+    mountStable(
       node,
       html`${entries.map(
         (entry) => html`<div class="log-row log-row--${entry.tone ?? "muted"}">
@@ -734,19 +762,19 @@ export function createGameScreen(ctx, initialView) {
     if (!node || !view) return;
     const active = config();
     if (!active || !selected || !active.options.includes(selected)) {
-      mount(node, "");
+      mountStable(node, "");
       node.classList.add("is-empty");
       return;
     }
     const player = (view.players ?? []).find((entry) => entry.id === selected);
     if (!player) {
       selected = null;
-      mount(node, "");
+      mountStable(node, "");
       node.classList.add("is-empty");
       return;
     }
     node.classList.remove("is-empty");
-    mount(
+    mountStable(
       node,
       html`<div class="target-bar__inner">
         ${avatar(player, { size: "sm", dead: !player.alive })}
@@ -897,6 +925,12 @@ export function createGameScreen(ctx, initialView) {
     if (!nextView) return;
     const previous = view;
     view = nextView;
+    const signature = viewSignatureOf(view);
+    // Hosts and guests receive a state payload every few seconds even when
+    // nothing changed. Re-mounting the panels restarts their entry animations,
+    // which read as flicker, so identical views are ignored.
+    if (!force && signature === viewSignature) return;
+    viewSignature = signature;
     if (previous && previous.phaseSerial !== view.phaseSerial) {
       selected = null;
       if (mode === "contract" && !view.night?.contract?.available) mode = null;
@@ -970,7 +1004,10 @@ export function createGameScreen(ctx, initialView) {
       update(view, { force: true });
       timer = setInterval(updateTimer, 250);
 
-      rootNode.addEventListener("click", (event) => {
+      // `#screen` outlives a single game, so the listener is removed in
+      // destroy(). Otherwise every rematch leaves a stale handler behind and
+      // one tap produces N toasts.
+      clickHandler = (event) => {
         const target = event.target instanceof Element ? event.target : null;
         if (!target) return;
 
@@ -1074,11 +1111,14 @@ export function createGameScreen(ctx, initialView) {
             showPlayerModal(player, view);
           }
         }
-      });
+      };
+      rootNode.addEventListener("click", clickHandler);
     },
     destroy() {
       clearInterval(timer);
       timer = null;
+      if (rootRef && clickHandler) rootRef.removeEventListener("click", clickHandler);
+      clickHandler = null;
       if (endModal) {
         closeModal("route");
         endModal = null;

@@ -2,7 +2,7 @@
  * Static-only cache. The relay (WebSocket) is never intercepted.
  * Bump VERSION together with js/app.js when shipping new assets.
  */
-const VERSION = "2.0.17";
+const VERSION = "2.0.18";
 const CACHE = `mafia-v${VERSION}`;
 const INDEX = new URL("./index.html", self.location.href).href;
 const SCOPE = new URL("./", self.location.href).href;
@@ -25,6 +25,7 @@ const PRECACHE = [
   "./css/tokens.css",
   "./js/app.js",
   "./js/main.js",
+  "./js/boot-guard.js",
   "./js/audio/manager.js",
   "./js/core/assets.js",
   "./js/core/effects.js",
@@ -74,43 +75,18 @@ const PRECACHE = [
   "./assets/img/roles/jester.png",
   "./assets/img/roles/mafia.png",
   "./assets/img/roles/sheriff.png",
-  "./assets/img/bots/alice.png",
-  "./assets/img/bots/chatgpt.png",
-  "./assets/img/bots/claude.png",
-  "./assets/img/bots/copilot.png",
-  "./assets/img/bots/deepseek.png",
-  "./assets/img/bots/falcon.png",
-  "./assets/img/bots/gemini.png",
-  "./assets/img/bots/gemma.png",
-  "./assets/img/bots/gigachat.png",
-  "./assets/img/bots/grok.png",
-  "./assets/img/bots/kimi.png",
-  "./assets/img/bots/llama.png",
-  "./assets/img/bots/mistral.png",
-  "./assets/img/bots/nova.png",
-  "./assets/img/bots/orion.png",
-  "./assets/img/bots/perplexity.png",
-  "./assets/img/bots/phi.png",
-  "./assets/img/bots/qwen.png",
-  "./assets/img/bots/system.png",
-  "./assets/img/bots/yi.png",
-  "./assets/audio/day.mp3",
-  "./assets/audio/day.ogg",
-  "./assets/audio/night.mp3",
-  "./assets/audio/night.ogg",
+  // Bot avatars and music are cached on demand: precaching a megabyte of audio
+  // before install made the first visit (and every SW update) crawl.
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
-      .catch((error) => {
-        // A single missing optional asset must not brick the install.
-        console.warn("[sw] precache incomplete", error?.message ?? error);
-        return self.skipWaiting();
-      }),
+    (async () => {
+      const cache = await caches.open(CACHE);
+      // One slow or missing optional asset must not block the whole install.
+      await Promise.allSettled(PRECACHE.map((url) => cache.add(url)));
+      await self.skipWaiting();
+    })(),
   );
 });
 
@@ -167,32 +143,56 @@ async function navigationResponse(request) {
 }
 
 async function networkFirstNavigation(request) {
-  try {
-    const response = await fetch(request);
-    // GitHub Pages answers pretty client routes with 404.html. Let that page
-    // bounce to the document root instead of serving index.html at a deep path,
-    // where every relative asset would resolve under the wrong directory.
-    if (response && response.status === 404) return response;
-    if (!response || !response.ok) throw new Error(`HTTP ${response?.status ?? "network"}`);
+  const url = new URL(request.url);
+  const shell = isShellNavigation(url);
+  const cache = await caches.open(CACHE);
+  const cached = shell ? (await cache.match(INDEX)) || (await cache.match(SCOPE)) : null;
+  if (cached) {
+    // The installed shell boots instantly; the fresh copy is fetched in the
+    // background. Waiting on GitHub Pages over a weak mobile connection is what
+    // used to leave the app blank for minutes.
+    refreshShell(request, cache);
+    return cached;
+  }
+
+  const response = await fetchWithTimeout(request, 8000).catch(() => null);
+  // GitHub Pages answers pretty client routes with 404.html. Let that page
+  // bounce to the document root instead of serving index.html at a deep path,
+  // where every relative asset would resolve under the wrong directory.
+  if (response && response.status === 404) return response;
+  if (response && response.ok) {
     if (String(response.headers.get("content-type") || "").includes("text/html")) {
       try {
-        if (isShellNavigation(new URL(response.url))) {
-          const cache = await caches.open(CACHE);
-          cache.put(INDEX, response.clone());
-        }
+        if (isShellNavigation(new URL(response.url))) await cache.put(INDEX, response.clone());
       } catch {
         // Keep the network response even if its URL cannot be parsed.
       }
     }
     return response;
-  } catch {
-    const url = new URL(request.url);
-    if (!isShellNavigation(url)) {
-      return Response.redirect(deepLinkTarget(url) || SCOPE, 302);
-    }
-    const cache = await caches.open(CACHE);
-    const cached = (await cache.match(INDEX)) || (await cache.match(SCOPE));
-    return cached || offlinePage();
+  }
+  return offlinePage();
+}
+
+/** Background refresh of the cached shell. Failures are deliberately silent. */
+function refreshShell(request, cache) {
+  fetchWithTimeout(request, 8000)
+    .then(async (response) => {
+      if (!response || !response.ok) return;
+      if (!String(response.headers.get("content-type") || "").includes("text/html")) return;
+      if (!isShellNavigation(new URL(response.url))) return;
+      await cache.put(INDEX, response.clone());
+    })
+    .catch(() => {});
+}
+
+/** fetch() with an abort deadline so a stalled connection cannot hang a screen. */
+async function fetchWithTimeout(request, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(request, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
   }
 }
 

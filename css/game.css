@@ -290,7 +290,6 @@
     linear-gradient(160deg, rgba(22, 27, 42, 0.84), rgba(9, 11, 19, 0.9));
   box-shadow: var(--shadow-2);
   overflow: hidden;
-  animation: banner-in 0.45s var(--ease-out) both;
 }
 
 .phase-banner::after {
@@ -640,7 +639,6 @@
   background:
     linear-gradient(150deg, color-mix(in srgb, var(--dock-accent, var(--gold)) 7%, transparent), transparent 50%),
     rgba(10, 13, 21, 0.78);
-  animation: pop 0.3s var(--ease-out) both;
 }
 
 .action-dock--night {
@@ -777,7 +775,6 @@
     0 0 30px rgba(217, 179, 108, 0.08);
   backdrop-filter: blur(16px);
   pointer-events: auto;
-  animation: target-in 0.3s var(--ease-out) both;
 }
 
 .target-bar__copy {

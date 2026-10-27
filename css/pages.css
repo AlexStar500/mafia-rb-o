@@ -23,6 +23,12 @@
   margin-bottom: var(--space-2);
 }
 
+.boot-guard__detail {
+  font-size: var(--fs-xs);
+  color: var(--muted-2);
+  word-break: break-word;
+}
+
 .busy {
   position: fixed;
   inset: 0;

@@ -5,6 +5,7 @@ function boot() {
   try {
     const app = createApp({ settings: loadSettings() });
     app.start();
+    globalThis.__mafiaBootOk?.();
     // A small, intentional debug handle for the console. It is not used by the
     // game logic and never contains secrets.
     globalThis.mafia = app;
@@ -34,6 +35,16 @@ function boot() {
 function registerServiceWorker(app) {
   if (!("serviceWorker" in navigator)) return;
   if (location.protocol !== "https:" && !["localhost", "127.0.0.1", "::1"].includes(location.hostname)) return;
+
+  // Pick up a new build automatically, but never reload in the middle of a
+  // live room: the session lives only in this tab's memory.
+  let refreshing = false;
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || refreshing || app.isSessionActive) return;
+    refreshing = true;
+    location.reload();
+  });
 
   window.addEventListener("load", async () => {
     try {
