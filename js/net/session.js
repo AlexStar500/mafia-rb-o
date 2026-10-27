@@ -259,6 +259,7 @@ export class HostSession extends BaseSession {
 
   get onlineLabel() {
     if (this.mode === "online") return "Онлайн";
+    if (this.mode === "lan") return "Локальная сеть";
     if (this.mode === "local") return LOCAL_ROOM_LABELS.label;
     return "Тренировка";
   }
@@ -457,6 +458,7 @@ export class HostSession extends BaseSession {
       public: this.engine.config.public,
       quick: this.engine.config.quick,
       spectatorOnly: this.spectatorOnly,
+      lan: this.mode === "lan",
       updatedAt: Date.now(),
     });
   }
@@ -818,7 +820,9 @@ export class GuestSession extends BaseSession {
   }
 
   get onlineLabel() {
-    return this.mode === "online" ? "Онлайн" : LOCAL_ROOM_LABELS.label;
+    if (this.mode === "online") return "Онлайн";
+    if (this.mode === "lan") return "Локальная сеть";
+    return LOCAL_ROOM_LABELS.label;
   }
 
   get isSpectator() {
@@ -1026,7 +1030,7 @@ export async function openRoom({
   const cleanConfig = roomConfig(config, botFill);
   let adapter = injectedAdapter;
 
-  if (!adapter && mode === "online") {
+  if (!adapter && (mode === "online" || mode === "lan")) {
     adapter = new OnlineHostAdapter({
       url: relayUrl,
       code: roomCode,
@@ -1035,6 +1039,7 @@ export async function openRoom({
         ...cleanConfig,
         hostName: profile.name,
         public: cleanConfig.public,
+        lan: mode === "lan",
       },
     });
     const welcome = await adapter.connect();
@@ -1043,7 +1048,7 @@ export async function openRoom({
       self: profile,
       config: cleanConfig,
       adapter,
-      mode: "online",
+      mode,
       spectatorOnly,
       botFill,
       autoStart,
@@ -1084,7 +1089,7 @@ export async function joinRoom({
   spectate = false,
 } = {}) {
   const profile = normalizeSelf(self);
-  if (mode === "online") {
+  if (mode === "online" || mode === "lan") {
     const adapter = new OnlineGuestAdapter({
       url: relayUrl,
       code,
@@ -1094,7 +1099,7 @@ export async function joinRoom({
       spectate,
     });
     await adapter.connect();
-    const session = new GuestSession({ adapter, self: profile, mode: "online" });
+    const session = new GuestSession({ adapter, self: profile, mode });
     await session.waitForWelcome(7000);
     return session;
   }

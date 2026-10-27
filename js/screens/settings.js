@@ -231,8 +231,9 @@ export function createSettingsScreen(ctx) {
               <div class="notice">
                 ${icon("info", { size: 16 })}
                 <span>
-                  GitHub Pages и mafia.rb-o.ru отдают только файлы игры и не запускают сервер. Для игры с других устройств укажите адрес своего
-                  WebSocket relay. Без него работают тренировка и «Порты» — комнаты в соседних вкладках.
+                  GitHub Pages и mafia.rb-o.ru отдают только файлы игры и не запускают сервер. Для других устройств есть два пути:
+                  «Локальная сеть» (<span class="mono">npm start</span> на компьютере, друзья заходят по его адресу) или онлайн-relay
+                  в интернете. Без сервера работают тренировка и «Порты» — комнаты в соседних вкладках.
                 </span>
               </div>
               <label class="field settings-relay" for="settings-relay">

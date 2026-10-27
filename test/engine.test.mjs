@@ -248,6 +248,16 @@ test("chat is filtered by channel", () => {
   const townView = engine.getView(town.id);
   assert.equal(mafiaView.chat.some((message) => message.channel === "mafia"), true);
   assert.equal(townView.chat.some((message) => message.channel === "mafia"), false);
+
+  // The dead watch the living: they read the mafia feed but cannot write to it.
+  const dead = engine.players[1];
+  dead.alive = false;
+  const deadView = engine.getView(dead.id);
+  assert.equal(deadView.chat.some((message) => message.channel === "mafia"), true);
+  assert.equal(deadView.self.chatChannels.includes("mafia"), true);
+  assert.equal(deadView.self.chatWriteChannels.includes("mafia"), false);
+  assert.equal(deadView.self.chatWriteChannels.includes("dead"), true);
+  assert.equal(engine.addChat(dead.id, "Я всё вижу.", { channel: "mafia" }).ok, false);
 });
 
 test("rate limiter and window limiter enforce limits", () => {

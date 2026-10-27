@@ -25,6 +25,7 @@ test("legacy invite links redirect to the join screen", () => {
 test("the join screen keeps its own query on boot", () => {
   assert.equal(bootJoinRedirect("/join", "?code=ABC234&mode=local"), "");
   assert.equal(bootJoinRedirect("/repo/join/", "?code=ABC234&mode=online"), "");
+  assert.equal(bootJoinRedirect("/repo/join/", "?code=ABC234&mode=lan"), "");
 });
 
 test("browser paths are normalized against the deployment base", () => {
@@ -47,6 +48,7 @@ test("deep links bounce through the static document root", () => {
   assert.equal(deepLinkRootRedirect("/repo/index.html", ""), "");
   assert.equal(deepLinkRootRedirect("/repo/join", "?code=abc234&mode=local"), "/?code=ABC234&mode=local");
   assert.equal(deepLinkRootRedirect("/repo/join/", "?code=abc234"), "/?code=ABC234");
+  assert.equal(deepLinkRootRedirect("/repo/join/", "?code=abc234&mode=lan"), "/?code=ABC234&mode=lan");
   assert.equal(deepLinkRootRedirect("/join", ""), "/?route=join");
   assert.equal(deepLinkRootRedirect("/repo/room/abc234", ""), "/?room=ABC234");
   assert.equal(deepLinkRootRedirect("/repo/room/abc234", "?relay=ws%3A%2F%2F127.0.0.1%3A8081%2Fws&mode=online"), "/?room=ABC234&relay=ws%3A%2F%2F127.0.0.1%3A8081%2Fws&mode=online");

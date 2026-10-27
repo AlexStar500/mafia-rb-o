@@ -160,9 +160,12 @@ export function createLobbyScreen(ctx, initialView) {
     if (!rootRef || !view) return;
     const head = qs("[data-lobby-head]", rootRef);
     const session = view.session ?? {};
-    const modes = session.mode === "online"
-      ? html`<span class="badge badge--town">${icon("wifi", { size: 11 })} Онлайн</span>`
-      : html`<span class="badge badge--muted">${icon("monitor", { size: 11 })} Порты</span>`;
+    const modes =
+      session.mode === "online"
+        ? html`<span class="badge badge--town">${icon("wifi", { size: 11 })} Онлайн</span>`
+        : session.mode === "lan"
+          ? html`<span class="badge badge--town">${icon("monitor", { size: 11 })} Локальная сеть</span>`
+          : html`<span class="badge badge--muted">${icon("monitor", { size: 11 })} Порты</span>`;
     mount(
       head,
       html`<header class="lobby-head panel panel--gold">
@@ -190,7 +193,9 @@ export function createLobbyScreen(ctx, initialView) {
       </header>
       ${session.mode === "local"
         ? html`<div class="notice lobby-local-note">${icon("info", { size: 16 })}<span>Порты живут в этом браузере. Откройте ссылку/код в другой вкладке — и город соберётся. Для других устройств нужен онлайн-relay.</span></div>`
-        : html`<div class="notice lobby-local-note">${icon("wifi", { size: 16 })}<span>Онлайн-комната: отправьте ссылку друзьям. Relay передаёт только игровые сообщения, не роли.</span></div>`}`,
+        : session.mode === "lan"
+          ? html`<div class="notice lobby-local-note">${icon("monitor", { size: 16 })}<span>Локальная сеть: друзья открывают ссылку на этом компьютере. Сервер уже раздаёт и игру, и relay — как LAN-игра в CS2.</span></div>`
+          : html`<div class="notice lobby-local-note">${icon("wifi", { size: 16 })}<span>Онлайн-комната: отправьте ссылку друзьям. Relay передаёт только игровые сообщения, не роли.</span></div>`}`,
     );
   };
 

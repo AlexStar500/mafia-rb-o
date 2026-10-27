@@ -17,6 +17,7 @@ import {
   sanitizeNick,
 } from "./core/security.js";
 import { normalizeRelayEndpoint } from "./net/protocol.js";
+import { probeSameOriginRelay, resolveRelayForMode } from "./net/auto.js";
 import { initials } from "./core/format.js";
 import { normalizeRoomConfig } from "./data/roles.js";
 import { checkRelay } from "./net/online.js";
@@ -79,7 +80,7 @@ function queryString(values) {
 
 export class App {
   constructor({ settings = loadSettings(), base = null } = {}) {
-    this.version = "2.0.14";
+    this.version = "2.0.16";
     this.settings = normalizeSettings(settings);
     this.playerId = createId("p");
     this.session = null;
@@ -89,6 +90,8 @@ export class App {
     this.screenKind = "";
     this.screenSession = null;
     this.relayUrl = this.settings.relayUrl;
+    this._autoRelay = "";
+    this._autoRelayAt = 0;
     this._sessionUnsubs = [];
     this._busyNode = null;
     this._installEvent = null;
@@ -624,7 +627,7 @@ export class App {
     this._unbindSession();
     this.session = session;
     this.view = session.view;
-    this.relayUrl = session.mode === "online" ? this.relayUrl : "";
+    this.relayUrl = session.mode === "online" || session.mode === "lan" ? this.relayUrl : "";
     this._sessionUnsubs = [
       session.on("view", (view) => this._onSessionView(session, view)),
       session.on("notice", ({ tone, text }) => {
@@ -666,7 +669,9 @@ export class App {
 
   async _adoptSession(session, { path, relayUrl = "", message = "" } = {}) {
     if (!session) throw new Error("Не удалось открыть комнату.");
-    this.relayUrl = relayUrl || (session.mode === "online" ? this.settings.relayUrl : "");
+    this.relayUrl =
+      relayUrl ||
+      (session.mode === "online" || session.mode === "lan" ? this.settings.relayUrl : "");
     this._bindSession(session);
     if (message) this.toast(message, { tone: "town" });
     this.playSfx("join");
@@ -889,25 +894,31 @@ export class App {
   async createRoom({ config = {}, mode = "local", relayUrl = "", autoFillBots = true } = {}) {
     if (!(await this._requireNick())) return false;
     const clean = normalizeRoomConfig(config);
+    const networked = mode === "online" || mode === "lan";
     let relay = "";
-    if (mode === "online") {
-      relay = normalizeRelayEndpoint(relayUrl || this.settings.relayUrl);
+    if (networked) {
+      relay = await resolveRelayForMode(mode, relayUrl || this.settings.relayUrl);
       if (!relay) {
-        this.toast("Для онлайн-комнаты нужен адрес relay.", { tone: "warn" });
+        this.toast(
+          mode === "lan"
+            ? "Локальная сеть не найдена. Запустите npm start на компьютере и откройте игру по его адресу."
+            : "Для онлайн-комнаты нужен адрес relay.",
+          { tone: "warn" },
+        );
         return false;
       }
     }
     this._closeCurrentSession("Прошлая комната закрыта.", { silent: true });
     const busy = this.busy("Готовим комнату…");
     try {
-      if (relay) this.updateSettings({ relayUrl: relay });
+      if (mode === "online" && relay) this.updateSettings({ relayUrl: relay });
       this.updateSettings({
         lastPlayerCount: clean.maxPlayers,
         botChat: clean.botChat,
         revealOnDeath: clean.revealOnDeath,
       });
       const session = await openRoom({
-        mode: mode === "online" ? "online" : "local",
+        mode: networked ? mode : "local",
         relayUrl: relay,
         self: this.profile,
         config: clean,
@@ -917,7 +928,12 @@ export class App {
       await this._adoptSession(session, {
         path: sessionPath(session.roomCode),
         relayUrl: relay,
-        message: mode === "online" ? "Онлайн-комната создана." : "Комната в портах создана.",
+        message:
+          mode === "online"
+            ? "Онлайн-комната создана."
+            : mode === "lan"
+              ? "Комната в локальной сети создана."
+              : "Комната в портах создана.",
       });
       return true;
     } catch (error) {
@@ -935,20 +951,26 @@ export class App {
       this.toast("Код комнаты — 6 символов без похожих I/O/0/1.", { tone: "warn" });
       return false;
     }
+    const networked = mode === "online" || mode === "lan";
     let relay = "";
-    if (mode === "online") {
-      relay = normalizeRelayEndpoint(relayUrl || this.settings.relayUrl);
+    if (networked) {
+      relay = await resolveRelayForMode(mode, relayUrl || this.settings.relayUrl);
       if (!relay) {
-        this.toast("Для онлайн-комнаты нужен адрес relay.", { tone: "warn" });
+        this.toast(
+          mode === "lan"
+            ? "Локальная сеть не найдена. Откройте игру по адресу компьютера-хоста."
+            : "Для онлайн-комнаты нужен адрес relay.",
+          { tone: "warn" },
+        );
         return false;
       }
     }
     this._closeCurrentSession("Прошлая комната закрыта.", { silent: true });
     const busy = this.busy(spectate ? "Входим наблюдателем…" : "Входим в комнату…");
     try {
-      if (relay) this.updateSettings({ relayUrl: relay });
+      if (mode === "online" && relay) this.updateSettings({ relayUrl: relay });
       const session = await joinNetworkRoom({
-        mode: mode === "online" ? "online" : "local",
+        mode: networked ? mode : "local",
         relayUrl: relay,
         code: roomCode,
         self: this.profile,
@@ -990,12 +1012,12 @@ export class App {
     if (room) {
       return this.joinRoom({
         code: room.code,
-        mode: room.source === "online" ? "online" : "local",
+        mode: room.source === "online" ? (room.lan ? "lan" : "online") : "local",
         spectate: room.status !== "lobby",
       });
     }
-    if (mode === "online") {
-      return this.joinRoom({ code: roomCode, mode: "online" });
+    if (mode === "online" || mode === "lan") {
+      return this.joinRoom({ code: roomCode, mode });
     }
     if (mode === "local") {
       return this.joinRoom({ code: roomCode, mode: "local" });
@@ -1022,7 +1044,7 @@ export class App {
     if (room) {
       return this.joinRoom({
         code: room.code,
-        mode: room.source === "online" ? "online" : "local",
+        mode: room.source === "online" ? (room.lan ? "lan" : "online") : "local",
         spectate: false,
       });
     }
@@ -1033,8 +1055,16 @@ export class App {
     });
   }
 
+  async _sameOriginRelay() {
+    if (Date.now() - this._autoRelayAt < 30_000) return this._autoRelay;
+    this._autoRelay = await probeSameOriginRelay();
+    this._autoRelayAt = Date.now();
+    return this._autoRelay;
+  }
+
   async listRooms(options = {}) {
-    return listAllRooms({ relayUrl: this.settings.relayUrl, ...options });
+    const relay = this.relayUrl || this.settings.relayUrl || (await this._sameOriginRelay());
+    return listAllRooms({ relayUrl: relay, ...options });
   }
 
   setReady(ready) {
@@ -1151,8 +1181,30 @@ export class App {
         return "";
       }
     }
-    const relay = this.session.mode === "online" ? this.relayUrl || this.settings.relayUrl : "";
-    const path = this.router.browserPath(`/join${queryString({ code: this.session.roomCode, relay })}`);
+    const network = this.session.mode === "online" || this.session.mode === "lan";
+    const relay = network ? this.relayUrl || this.settings.relayUrl : "";
+    const path = this.router.browserPath(
+      `/join${queryString({
+        code: this.session.roomCode,
+        relay: this.session.mode === "lan" ? "" : relay,
+        mode: this.session.mode === "lan" ? "lan" : "",
+      })}`,
+    );
+    if (this.session.mode === "lan" && relay) {
+      // A LAN invite must load the app from the host machine: HTTPS GitHub
+      // Pages cannot open an insecure ws:// socket to a private address.
+      try {
+        const url = new URL(relay);
+        url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+        url.pathname = "/join";
+        url.search = "";
+        url.searchParams.set("code", this.session.roomCode);
+        url.searchParams.set("mode", "lan");
+        return url.toString();
+      } catch {
+        // fall through to the normal origin
+      }
+    }
     try {
       return new URL(path, location.origin).toString();
     } catch {
@@ -1169,10 +1221,17 @@ export class App {
     const code = this.session.roomCode;
     const mode = this.session.mode;
     const local = mode === "local";
+    const lan = mode === "lan";
     const solo = mode === "solo";
     const handle = openModal({
       title: "Позвать в город",
-      subtitle: solo ? "Это тренировка с ботами" : local ? "Порты этого браузера" : "Онлайн-комната через relay",
+      subtitle: solo
+        ? "Это тренировка с ботами"
+        : local
+          ? "Порты этого браузера"
+          : lan
+            ? "Локальная сеть: ссылка ведёт на компьютер-хост"
+            : "Онлайн-комната через relay",
       body: html`<div class="share-box">
         <div class="share-box__code">
           <span class="field__label">Код комнаты</span>
@@ -1183,12 +1242,14 @@ export class App {
           <input class="input mono" id="share-url" data-share-url type="text" readonly value="${url}" />
         </label>
         <div class="notice ${solo ? "notice--danger" : ""}">
-          ${icon(solo ? "bot" : local ? "monitor" : "wifi", { size: 16 })}
+          ${icon(solo ? "bot" : local ? "monitor" : lan ? "monitor" : "wifi", { size: 16 })}
           <span>${solo
             ? "Тренировка не подключает других игроков. Создайте комнату, чтобы играть вместе."
             : local
               ? "Порты работают только во вкладках этого браузера. Для других устройств нужен relay в настройках. Один только GitHub Pages или mafia.rb-o.ru сеть не поднимет."
-              : "Ссылка уже содержит адрес relay. Другому игроку не нужно ничего настраивать."}</span>
+              : lan
+                ? "Ссылка ведёт на компьютер-хост. Друзья должны быть в той же сети, а сервер — запущен через npm start. Если в адресе localhost или 127.0.0.1, откройте игру по LAN-адресу из консоли сервера."
+                : "Ссылка уже содержит адрес relay. Другому игроку не нужно ничего настраивать."}</span>
         </div>
       </div>`,
       footer: html`<button class="btn btn--ghost" type="button" data-modal-close>Закрыть</button>

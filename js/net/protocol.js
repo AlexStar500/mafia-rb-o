@@ -89,6 +89,7 @@ export function cleanRoomMeta(input = {}) {
     public: src.public !== false,
     quick: src.quick === true,
     spectatorOnly: src.spectatorOnly === true,
+    lan: src.lan === true,
     source: "online",
     updatedAt: Number(src.updatedAt) || Date.now(),
   };

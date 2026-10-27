@@ -122,7 +122,8 @@ function joinRedirectQuery(search = "") {
   if (!code) return "";
   const relay = normalizeRelayEndpoint(params.get("relay") ?? "");
   const requestedMode = params.get("mode");
-  const mode = requestedMode === "local" || requestedMode === "online" ? requestedMode : "";
+  const mode =
+    requestedMode === "local" || requestedMode === "online" || requestedMode === "lan" ? requestedMode : "";
   const query = new URLSearchParams({ code });
   if (relay) query.set("relay", relay);
   if (mode) query.set("mode", mode);
@@ -170,7 +171,7 @@ export function deepLinkRootRedirect(pathname = "/", search = "") {
     const query = new URLSearchParams({ room: code });
     const relay = normalizeRelayEndpoint(params.get("relay") ?? "");
     if (relay) query.set("relay", relay);
-    if (mode === "local" || mode === "online") query.set("mode", mode);
+    if (mode === "local" || mode === "online" || mode === "lan") query.set("mode", mode);
     return `/?${query.toString()}`;
   }
   if (route === "join") {
@@ -180,7 +181,7 @@ export function deepLinkRootRedirect(pathname = "/", search = "") {
     const relay = normalizeRelayEndpoint(params.get("relay") ?? "");
     const mode = params.get("mode");
     if (relay) fallback.set("relay", relay);
-    if (mode === "local" || mode === "online") fallback.set("mode", mode);
+    if (mode === "local" || mode === "online" || mode === "lan") fallback.set("mode", mode);
     return `/?${fallback.toString()}`;
   }
   if (LINKABLE_ROUTES.includes(route)) {

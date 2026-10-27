@@ -1,13 +1,14 @@
 /**
- * Bot roster. These are ordinary citizens of the night city: human names,
- * human habits. Ids are stable because they also name the pixel portraits.
+ * Bot roster. Names are fictional AI models — close enough to the real thing
+ * to feel familiar, different enough to live in the night city. Ids are stable
+ * because they also name the pixel portraits.
  */
 
 export const BOT_ROSTER = Object.freeze([
   {
     id: "deepseek",
-    name: "Марк Ветров",
-    tagline: "Считает голоса быстрее, чем официант — заказы.",
+    name: "Seafin",
+    tagline: "Ныряет в логи быстрее, чем город успевает проголосовать.",
     color: "#4d6bfe",
     avatar: "assets/img/bots/deepseek.png",
     style: "analyst",
@@ -15,8 +16,8 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "gemini",
-    name: "Лена Морозова",
-    tagline: "Всегда сомневается. Даже в собственных сомнениях.",
+    name: "Gemmi",
+    tagline: "Видит две версии каждого голоса. Иногда три.",
     color: "#8ab4f8",
     avatar: "assets/img/bots/gemini.png",
     style: "philosopher",
@@ -24,7 +25,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "chatgpt",
-    name: "Паша Лебедев",
+    name: "ChatGep",
     tagline: "Вежлив до последнего голоса.",
     color: "#10a37f",
     avatar: "assets/img/bots/chatgpt.png",
@@ -33,7 +34,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "claude",
-    name: "Игорь Панов",
+    name: "Cloud",
     tagline: "Слишком честен для этого города.",
     color: "#d97757",
     avatar: "assets/img/bots/claude.png",
@@ -42,7 +43,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "grok",
-    name: "Стас Котов",
+    name: "Gruk",
     tagline: "Шутит, пока другие голосуют.",
     color: "#b8c0cc",
     avatar: "assets/img/bots/grok.png",
@@ -51,7 +52,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "copilot",
-    name: "Милана Ким",
+    name: "Copilo",
     tagline: "Всегда рядом. Иногда слишком.",
     color: "#00a4ef",
     avatar: "assets/img/bots/copilot.png",
@@ -60,7 +61,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "mistral",
-    name: "Рита Ветрова",
+    name: "Mistril",
     tagline: "Спорит с ветром и обычно побеждает.",
     color: "#ff5a1f",
     avatar: "assets/img/bots/mistral.png",
@@ -69,7 +70,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "gigachat",
-    name: "Гоша Крылов",
+    name: "GigaTalk",
     tagline: "Огромный, шумный, подозрительный.",
     color: "#21a038",
     avatar: "assets/img/bots/gigachat.png",
@@ -78,7 +79,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "alice",
-    name: "Алиса Воронцова",
+    name: "Alis",
     tagline: "Улыбается, когда врёт.",
     color: "#ff2d95",
     avatar: "assets/img/bots/alice.png",
@@ -87,7 +88,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "qwen",
-    name: "Кирилл Ясенев",
+    name: "Quen",
     tagline: "Задаёт правильные вопросы. Иногда не вовремя.",
     color: "#615ced",
     avatar: "assets/img/bots/qwen.png",
@@ -96,8 +97,8 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "llama",
-    name: "Тимур Барсуков",
-    tagline: "Упрямый, как очередь в мэрию.",
+    name: "Lama",
+    tagline: "Упрямая, как очередь в мэрию.",
     color: "#f5c518",
     avatar: "assets/img/bots/llama.png",
     style: "deadpan",
@@ -105,7 +106,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "perplexity",
-    name: "Вера Соловьёва",
+    name: "Perple",
     tagline: "Ищет факты там, где их нет.",
     color: "#20808d",
     avatar: "assets/img/bots/perplexity.png",
@@ -114,7 +115,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "kimi",
-    name: "Кира Миронова",
+    name: "Qiri",
     tagline: "Слишком мила для такой игры.",
     color: "#ff6b6b",
     avatar: "assets/img/bots/kimi.png",
@@ -123,7 +124,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "nova",
-    name: "Нина Орлова",
+    name: "Novi",
     tagline: "Вспыхивает и исчезает.",
     color: "#ff7ab6",
     avatar: "assets/img/bots/nova.png",
@@ -132,7 +133,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "phi",
-    name: "Фёдор Тихий",
+    name: "Fai",
     tagline: "Тихий. Пока не станет поздно.",
     color: "#a7b0be",
     avatar: "assets/img/bots/phi.png",
@@ -141,7 +142,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "gemma",
-    name: "Женя Белова",
+    name: "Gemmy",
     tagline: "Верит в город. Пока.",
     color: "#7cb342",
     avatar: "assets/img/bots/gemma.png",
@@ -150,7 +151,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "falcon",
-    name: "Лев Соколов",
+    name: "Falkon",
     tagline: "Смотрит сверху на всю мафию.",
     color: "#c9a227",
     avatar: "assets/img/bots/falcon.png",
@@ -159,7 +160,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "yi",
-    name: "Ян Ли",
+    name: "Yii",
     tagline: "Считает до двух и обратно.",
     color: "#22d3ee",
     avatar: "assets/img/bots/yi.png",
@@ -168,7 +169,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "orion",
-    name: "Олег Зорин",
+    name: "Orion",
     tagline: "Ночью видит больше всех.",
     color: "#6d5ef8",
     avatar: "assets/img/bots/orion.png",
@@ -177,7 +178,7 @@ export const BOT_ROSTER = Object.freeze([
   },
   {
     id: "system",
-    name: "Семён Громов",
+    name: "Sistem",
     tagline: "Ошибка в матрице. Или мафия.",
     color: "#c0392b",
     avatar: "assets/img/bots/system.png",

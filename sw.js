@@ -2,7 +2,7 @@
  * Static-only cache. The relay (WebSocket) is never intercepted.
  * Bump VERSION together with js/app.js when shipping new assets.
  */
-const VERSION = "2.0.14";
+const VERSION = "2.0.16";
 const CACHE = `mafia-v${VERSION}`;
 const INDEX = new URL("./index.html", self.location.href).href;
 const SCOPE = new URL("./", self.location.href).href;
@@ -38,6 +38,7 @@ const PRECACHE = [
   "./js/data/roles.js",
   "./js/game/bot.js",
   "./js/game/engine.js",
+  "./js/net/auto.js",
   "./js/net/local.js",
   "./js/net/online.js",
   "./js/net/protocol.js",
@@ -222,7 +223,7 @@ function deepLinkTarget(url) {
     const out = new URLSearchParams({ room: code });
     const relay = url.searchParams.get("relay");
     if (relay) out.set("relay", relay);
-    if (mode === "local" || mode === "online") out.set("mode", mode);
+    if (mode === "local" || mode === "online" || mode === "lan") out.set("mode", mode);
     return new URL(`${SCOPE}?${out.toString()}`, self.location.href).href;
   }
 
@@ -237,7 +238,7 @@ function deepLinkTarget(url) {
     const relay = url.searchParams.get("relay");
     if (relay) out.set("relay", relay);
     const mode = url.searchParams.get("mode");
-    if (mode === "local" || mode === "online") out.set("mode", mode);
+    if (mode === "local" || mode === "online" || mode === "lan") out.set("mode", mode);
     return new URL(`${SCOPE}?${out.toString()}`, self.location.href).href;
   }
 

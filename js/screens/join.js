@@ -1,6 +1,7 @@
 import { html, qs, qsa } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { normalizeRelayEndpoint } from "../net/protocol.js";
+import { probeSameOriginRelay } from "../net/auto.js";
 import { isValidRoomCode, normalizeRoomCode } from "../core/security.js";
 import { loadRoomRegistry } from "../core/storage.js";
 
@@ -10,8 +11,14 @@ export function createJoinScreen(ctx) {
   const query = ctx.route?.query ?? {};
   const invitedCode = normalizeRoomCode(query.code ?? query.room ?? "");
   const invitedRelay = normalizeRelayEndpoint(query.relay ?? "");
-  let mode = invitedRelay || settings.relayUrl ? "online" : query.mode === "online" ? "online" : "local";
-  if (query.mode === "local") mode = "local";
+  let mode = invitedRelay
+    ? "online"
+    : ["local", "lan", "online"].includes(query.mode)
+      ? query.mode
+      : settings.relayUrl
+        ? "online"
+        : "local";
+  let sameOrigin = "";
   const recent = loadRoomRegistry()
     .filter((room) => room?.code)
     .slice(0, 4);
@@ -51,11 +58,15 @@ export function createJoinScreen(ctx) {
             <div class="join-mode">
               <span class="field__label">Способ подключения</span>
               <div class="mode-picker mode-picker--compact" role="radiogroup" aria-label="Способ подключения">
-                <button class="mode-option ${mode === "local" ? "is-active" : ""}" type="button" data-join-mode="local" role="radio" aria-checked="${mode === "local"}">
+                <button class="mode-option ${mode === "local" ? "is-active" : ""}" type="button" data-join-mode="local" role="radio" aria-checked="${mode === "local" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 18 })}</span>
                   <span><b>Порты</b><span>Вкладки этого браузера, без сервера</span></span>
                 </button>
-                <button class="mode-option ${mode === "online" ? "is-active" : ""}" type="button" data-join-mode="online" role="radio" aria-checked="${mode === "online"}">
+                <button class="mode-option ${mode === "lan" ? "is-active" : ""}" type="button" data-join-mode="lan" role="radio" aria-checked="${mode === "lan" ? "true" : "false"}">
+                  <span class="mode-option__icon">${icon("monitor", { size: 18 })}</span>
+                  <span><b>Локальная сеть</b><span>Компьютер-хост в той же сети</span></span>
+                </button>
+                <button class="mode-option ${mode === "online" ? "is-active" : ""}" type="button" data-join-mode="online" role="radio" aria-checked="${mode === "online" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("wifi", { size: 18 })}</span>
                   <span><b>Онлайн</b><span>Через relay-сервер</span></span>
                 </button>
@@ -75,8 +86,16 @@ export function createJoinScreen(ctx) {
                   autocomplete="off"
                   spellcheck="false"
                 />
+                <span class="field__hint">Если поле пустое, relay на этом же адресе подставится сам.</span>
                 <span class="field__error" data-join-error></span>
               </label>
+            </div>
+            <div class="relay-field ${mode === "lan" ? "" : "hidden"}" data-join-lan-field>
+              <div class="notice">
+                ${icon("info", { size: 16 })}
+                <span data-join-lan-status>Проверяем локальный сервер…</span>
+              </div>
+              <span class="field__error" data-join-lan-error></span>
             </div>
 
             <label class="setting-row setting-row--switch join-spectate" for="join-spectate">
@@ -105,8 +124,12 @@ export function createJoinScreen(ctx) {
                 <div><b>Порты</b><p>Комната живёт во вкладках этого браузера. Сервер не нужен — работает и на GitHub Pages, и на mafia.rb-o.ru.</p></div>
               </div>
               <div class="join-help__row">
+                <span class="join-help__icon">${icon("monitor", { size: 18 })}</span>
+                <div><b>Локальная сеть</b><p>Хост запускает <span class="mono">npm start</span> на компьютере, друзья открывают его адрес в той же сети. Сервер и relay — в одном процессе, как LAN в CS2.</p></div>
+              </div>
+              <div class="join-help__row">
                 <span class="join-help__icon">${icon("wifi", { size: 18 })}</span>
-                <div><b>Онлайн</b><p>Нужен relay: <span class="mono">npm run relay</span> или свой WebSocket-сервер. Адрес можно взять из ссылки-приглашения.</p></div>
+                <div><b>Онлайн</b><p>Нужен relay в интернете: <span class="mono">npm run relay</span> на VPS или Render. Адрес можно взять из ссылки-приглашения.</p></div>
               </div>
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("shield", { size: 18 })}</span>
@@ -141,8 +164,23 @@ export function createJoinScreen(ctx) {
     mount(root) {
       const codeInput = qs("[data-join-code]", root);
       const relayField = qs("[data-join-relay-field]", root);
+      const lanField = qs("[data-join-lan-field]", root);
       const relayInput = qs("[data-join-relay]", root);
       const spectate = qs("[data-join-spectate]", root);
+      const lanStatus = () => {
+        const node = qs("[data-join-lan-status]", root);
+        if (!node) return;
+        node.textContent = sameOrigin
+          ? `Сервер найден: ${sameOrigin.replace(/^wss?:/, "ws:")}`
+          : "Сервер не найден. Откройте игру по адресу компьютера-хоста.";
+      };
+      const detectSameOrigin = () =>
+        probeSameOriginRelay().then((url) => {
+          sameOrigin = url;
+          lanStatus();
+          return url;
+        });
+      void detectSameOrigin();
 
       codeInput.addEventListener("input", () => {
         codeInput.value = normalizeRoomCode(codeInput.value);
@@ -165,6 +203,11 @@ export function createJoinScreen(ctx) {
             button.setAttribute("aria-checked", button === modeButton ? "true" : "false");
           }
           relayField.classList.toggle("hidden", mode !== "online");
+          lanField.classList.toggle("hidden", mode !== "lan");
+          if (mode === "lan") {
+            lanStatus();
+            void detectSameOrigin();
+          }
           return;
         }
         const recentButton = target.closest("[data-recent-code]");
@@ -176,9 +219,10 @@ export function createJoinScreen(ctx) {
         if (target.closest("[data-go-create]")) app.navigate("/create");
       });
 
-      qs("[data-join-form]", root).addEventListener("submit", (event) => {
+      qs("[data-join-form]", root).addEventListener("submit", async (event) => {
         event.preventDefault();
         const error = qs("[data-join-error]", root);
+        const lanError = qs("[data-join-lan-error]", root);
         const code = normalizeRoomCode(codeInput.value);
         if (!isValidRoomCode(code)) {
           app.toast("Код комнаты — 6 символов без похожих I/O/0/1.", { tone: "warn" });
@@ -191,14 +235,15 @@ export function createJoinScreen(ctx) {
         let relayUrl = "";
         if (mode === "online") {
           relayUrl = normalizeRelayEndpoint(relayInput.value);
-          if (!relayUrl) {
-            error.textContent = "Укажите корректный relay адрес.";
+          if (relayUrl && typeof location !== "undefined" && location.protocol === "https:" && !relayUrl.startsWith("wss:")) {
+            error.textContent = "На HTTPS нужен wss:// relay.";
             relayInput.setAttribute("aria-invalid", "true");
             relayInput.focus({ preventScroll: true });
             return;
           }
-          if (typeof location !== "undefined" && location.protocol === "https:" && !relayUrl.startsWith("wss:")) {
-            error.textContent = "На HTTPS нужен wss:// relay.";
+          if (!relayUrl) relayUrl = await detectSameOrigin();
+          if (!relayUrl) {
+            error.textContent = "Укажите корректный relay адрес.";
             relayInput.setAttribute("aria-invalid", "true");
             relayInput.focus({ preventScroll: true });
             return;
@@ -206,6 +251,15 @@ export function createJoinScreen(ctx) {
           error.textContent = "";
           relayInput.removeAttribute("aria-invalid");
           app.updateSettings({ relayUrl });
+        }
+        if (mode === "lan") {
+          relayUrl = await detectSameOrigin();
+          if (!relayUrl) {
+            lanError.textContent = "Локальный сервер не найден. Откройте игру по адресу компьютера-хоста.";
+            app.playSfx("error");
+            return;
+          }
+          lanError.textContent = "";
         }
         void app.joinRoom({ code, mode, spectate: spectate.checked, relayUrl });
       });

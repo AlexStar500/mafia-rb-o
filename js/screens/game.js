@@ -184,13 +184,16 @@ export function createGameScreen(ctx, initialView) {
     const self = view.self ?? {};
     const alive = (view.players ?? []).filter((player) => player.alive).length;
     const session = view.session ?? {};
-    const modeBadge = session.mode === "online"
-      ? html`<span class="badge badge--town">${icon("wifi", { size: 10 })} онлайн</span>`
-      : session.spectatorOnly
-        ? html`<span class="badge badge--violet">${icon("eye", { size: 10 })} наблюдение</span>`
-        : session.mode === "local"
-          ? html`<span class="badge badge--muted">${icon("monitor", { size: 10 })} порты</span>`
-          : html`<span class="badge badge--muted">${icon("bot", { size: 10 })} тренировка</span>`;
+    const modeBadge =
+      session.mode === "online"
+        ? html`<span class="badge badge--town">${icon("wifi", { size: 10 })} онлайн</span>`
+        : session.mode === "lan"
+          ? html`<span class="badge badge--town">${icon("monitor", { size: 10 })} локальная сеть</span>`
+          : session.spectatorOnly
+            ? html`<span class="badge badge--violet">${icon("eye", { size: 10 })} наблюдение</span>`
+            : session.mode === "local"
+              ? html`<span class="badge badge--muted">${icon("monitor", { size: 10 })} порты</span>`
+              : html`<span class="badge badge--muted">${icon("bot", { size: 10 })} тренировка</span>`;
     const spectatorControls = session.spectatorOnly
       ? html`<div class="hud-speed" role="group" aria-label="Темп игры">
           ${[1, 2, 4].map(

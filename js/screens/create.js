@@ -2,6 +2,7 @@ import { html, qs, mount } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { RoomForm } from "../ui/roomForm.js";
 import { normalizeRelayEndpoint } from "../net/protocol.js";
+import { probeSameOriginRelay } from "../net/auto.js";
 import { normalizeRoomConfig, computeRoleSetup, ROLES } from "../data/roles.js";
 
 function localRelayDefault() {
@@ -36,6 +37,29 @@ export function createCreateScreen(ctx) {
   let mode = settings.relayUrl ? "online" : "local";
   let config = initial;
   let form = null;
+  let sameOrigin = "";
+  let sameOriginProbe = null;
+
+  const detectSameOrigin = () => {
+    if (sameOrigin) return Promise.resolve(sameOrigin);
+    if (!sameOriginProbe) {
+      sameOriginProbe = probeSameOriginRelay().then((url) => {
+        sameOrigin = url;
+        // A miss may be a service-worker hiccup: let the next call retry.
+        if (!url) sameOriginProbe = null;
+        return url;
+      });
+    }
+    return sameOriginProbe ?? Promise.resolve("");
+  };
+
+  const lanStatus = (root) => {
+    const node = qs("[data-lan-status]", root);
+    if (!node) return;
+    node.textContent = sameOrigin
+      ? `Сервер найден: ${sameOrigin.replace(/^wss?:/, "ws:")}`
+      : "Сервер не найден. Запустите npm start и откройте игру по адресу компьютера в локальной сети.";
+  };
 
   const htmlScreen = html`<div class="screen">
     <div class="page create-page">
@@ -53,18 +77,25 @@ export function createCreateScreen(ctx) {
             </div>
             <div class="panel__body">
               <div class="mode-picker" role="radiogroup" aria-label="Режим комнаты">
-                <button class="mode-option ${mode === "local" ? "is-active" : ""}" type="button" data-create-mode="local" role="radio" aria-checked="${mode === "local"}">
+                <button class="mode-option ${mode === "local" ? "is-active" : ""}" type="button" data-create-mode="local" role="radio" aria-checked="${mode === "local" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 20 })}</span>
                   <span>
                     <b>Порты</b>
-                    <span>Вкладки этого браузера. Без сервера — работает на GitHub Pages и на своём домене.</span>
+                    <span>Вкладки этого браузера. Без сервера — работает на GitHub Pages и на mafia.rb-o.ru.</span>
                   </span>
                 </button>
-                <button class="mode-option ${mode === "online" ? "is-active" : ""}" type="button" data-create-mode="online" role="radio" aria-checked="${mode === "online"}">
+                <button class="mode-option ${mode === "lan" ? "is-active" : ""}" type="button" data-create-mode="lan" role="radio" aria-checked="${mode === "lan" ? "true" : "false"}">
+                  <span class="mode-option__icon">${icon("monitor", { size: 20 })}</span>
+                  <span>
+                    <b>Локальная сеть</b>
+                    <span>Сервер на этом компьютере. Друзья заходят по адресу в той же сети — как в CS2.</span>
+                  </span>
+                </button>
+                <button class="mode-option ${mode === "online" ? "is-active" : ""}" type="button" data-create-mode="online" role="radio" aria-checked="${mode === "online" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("wifi", { size: 20 })}</span>
                   <span>
                     <b>Онлайн</b>
-                    <span>Разные устройства через relay. Нужен адрес WebSocket-сервера.</span>
+                    <span>Relay в интернете. Если игра запущена через npm start, адрес найдётся автоматически.</span>
                   </span>
                 </button>
               </div>
@@ -81,9 +112,20 @@ export function createCreateScreen(ctx) {
                     autocomplete="off"
                     spellcheck="false"
                   />
-                  <span class="field__hint">Relay — только транспорт. Роли и закрытый чат остаются у хоста.</span>
+                  <span class="field__hint">Можно оставить пустым: relay на этом же адресе подставится сам. Роли и закрытый чат остаются у хоста.</span>
                   <span class="field__error" data-relay-error></span>
                 </label>
+              </div>
+              <div class="relay-field ${mode === "lan" ? "" : "hidden"}" data-lan-field>
+                <div class="notice">
+                  ${icon("info", { size: 16 })}
+                  <span data-lan-status>Проверяем локальный сервер…</span>
+                </div>
+                <p class="field__hint">
+                  Запустите <span class="mono">npm start</span> на компьютере и откройте игру по его адресу в локальной сети.
+                  Ссылка-приглашение будет вести прямо на этот компьютер.
+                </p>
+                <span class="field__error" data-lan-error></span>
               </div>
             </div>
           </section>
@@ -164,7 +206,9 @@ export function createCreateScreen(ctx) {
       });
 
       const relayField = qs("[data-relay-field]", root);
+      const lanField = qs("[data-lan-field]", root);
       const relayInput = qs("[data-create-relay]", root);
+      detectSameOrigin().then(() => lanStatus(root));
       root.addEventListener("click", (event) => {
         const target = event.target instanceof Element ? event.target : null;
         if (!target) return;
@@ -176,19 +220,31 @@ export function createCreateScreen(ctx) {
             button.setAttribute("aria-checked", button === modeButton ? "true" : "false");
           }
           relayField.classList.toggle("hidden", mode !== "online");
+          lanField.classList.toggle("hidden", mode !== "lan");
           if (mode === "online" && !relayInput.value) relayInput.value = settings.relayUrl || localRelayDefault();
+          if (mode === "lan") {
+            lanStatus(root);
+            void detectSameOrigin().then(() => lanStatus(root));
+          }
           return;
         }
         if (target.closest("[data-go-rules]")) app.navigate("/rules");
         else if (target.closest("[data-go-settings]")) app.navigate("/settings");
       });
 
-      qs("[data-create-form]", root).addEventListener("submit", (event) => {
+      qs("[data-create-form]", root).addEventListener("submit", async (event) => {
         event.preventDefault();
         let relayUrl = "";
         if (mode === "online") {
           relayUrl = normalizeRelayEndpoint(relayInput.value);
           const error = qs("[data-relay-error]", root);
+          if (relayUrl && typeof location !== "undefined" && location.protocol === "https:" && !relayUrl.startsWith("wss:")) {
+            error.textContent = "На HTTPS нужен защищённый wss:// relay.";
+            relayInput.setAttribute("aria-invalid", "true");
+            relayInput.focus({ preventScroll: true });
+            return;
+          }
+          if (!relayUrl) relayUrl = await detectSameOrigin();
           if (!relayUrl) {
             error.textContent = "Укажите корректный ws:// или wss:// адрес.";
             relayInput.setAttribute("aria-invalid", "true");
@@ -196,15 +252,19 @@ export function createCreateScreen(ctx) {
             app.playSfx("error");
             return;
           }
-          if (typeof location !== "undefined" && location.protocol === "https:" && !relayUrl.startsWith("wss:")) {
-            error.textContent = "На HTTPS нужен защищённый wss:// relay.";
-            relayInput.setAttribute("aria-invalid", "true");
-            relayInput.focus({ preventScroll: true });
-            return;
-          }
           qs("[data-relay-error]", root).textContent = "";
           relayInput.removeAttribute("aria-invalid");
           app.updateSettings({ relayUrl });
+        }
+        if (mode === "lan") {
+          relayUrl = await detectSameOrigin();
+          const error = qs("[data-lan-error]", root);
+          if (!relayUrl) {
+            error.textContent = "Локальный relay не найден. Запустите npm start и откройте игру по адресу компьютера.";
+            app.playSfx("error");
+            return;
+          }
+          error.textContent = "";
         }
         const autoFill = qs("[data-create-autofill]", root).checked;
         config = form.getValue();

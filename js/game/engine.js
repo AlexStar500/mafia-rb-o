@@ -1021,7 +1021,9 @@ export class GameEngine {
     if (message.channel === "dead") return spectator || Boolean(viewer && !viewer.alive);
     if (message.channel === "mafia") {
       if (spectator) return true;
-      // Dead players never keep the mafia feed: death closes every secret.
+      // The dead watch the living: they keep the mafia feed as a ghost, but
+      // still cannot write to it.
+      if (viewer && !viewer.alive) return true;
       return Boolean(viewer && viewer.alive && viewer.team === "mafia");
     }
     return false;
@@ -1246,13 +1248,13 @@ export class GameEngine {
     if (viewer) {
       if (this.phase === PHASE.LAST_WORDS) {
         chatChannels.push("public");
-        if (!viewer.alive) chatChannels.push("dead");
+        if (!viewer.alive) chatChannels.push("mafia", "dead");
         if (viewer.id === this.lastWordsPlayerId && !this.lastWordsSpoken) chatWriteChannels.push("public");
         else if (!viewer.alive) chatWriteChannels.push("dead");
       } else if (!viewer.alive) {
-        // The dead keep the ordinary feed and their own quiet room, but never
-        // the mafia channel.
-        chatChannels.push("public", "dead");
+        // The dead keep watching the living — public and mafia feeds — but
+        // their only microphone is the dead room.
+        chatChannels.push("public", "mafia", "dead");
         chatWriteChannels.push("dead");
       } else if (this.phase === PHASE.NIGHT) {
         if (viewer.team === "mafia") {

@@ -14,7 +14,7 @@ function roomCard(room) {
   return html`<article class="room-card ${room.status === "playing" ? "room-card--live" : ""}">
     <div class="room-card__top">
       <span class="badge ${room.source === "online" ? "badge--town" : "badge--muted"}">
-        ${icon(room.source === "online" ? "wifi" : "monitor", { size: 11 })} ${roomModeText(room)}
+        ${icon(room.source === "online" ? (room.lan ? "monitor" : "wifi") : "monitor", { size: 11 })} ${roomModeText(room)}
       </span>
       <span class="badge ${room.status === "lobby" ? "badge--town badge--dot" : room.status === "playing" ? "badge--danger badge--dot" : "badge--muted"}">
         ${roomStatusText(room)}
@@ -24,7 +24,7 @@ function roomCard(room) {
     <div class="room-card__body">
       <h3 class="room-card__name">${room.name}</h3>
       <p class="room-card__host">
-        ${icon("crown", { size: 13 })} ${room.hostName || "Хост"} · ${room.source === "online" ? "по сети" : "этот браузер"}
+        ${icon("crown", { size: 13 })} ${room.hostName || "Хост"} · ${room.source === "online" ? (room.lan ? "локальная сеть" : "по сети") : "этот браузер"}
       </p>
       <div class="room-card__meta">
         <span>${icon("users", { size: 14 })} <b>${room.players}</b>/${room.maxPlayers}</span>
@@ -73,8 +73,8 @@ export function createRoomsScreen(ctx) {
           <span class="eyebrow">${icon("users", { size: 13 })} Живые комнаты</span>
           <h1 class="page-title">Найдите свой город</h1>
           <p class="page-sub">
-            «Порты» живут во вкладках этого браузера. Онлайн-комнаты идут через relay-сервер: сам GitHub Pages или mafia.rb-o.ru
-            сетевую игру не заменяет.
+            «Порты» живут во вкладках этого браузера. «Локальная сеть» — сервер на вашем компьютере и друзья по адресу в той же сети.
+            «Онлайн» идёт через relay: сам GitHub Pages или mafia.rb-o.ru сетевую игру не заменяет.
           </p>
         </div>
         <button class="btn btn--primary" type="button" data-go-create>${icon("plus", { size: 17 })} Создать</button>
@@ -104,7 +104,7 @@ export function createRoomsScreen(ctx) {
             <div class="seg" role="group" aria-label="Источник комнат">
               <button class="seg__btn is-active" type="button" data-filter-mode="all">Все</button>
               <button class="seg__btn" type="button" data-filter-mode="local">Порты</button>
-              <button class="seg__btn" type="button" data-filter-mode="online" ${app.settings.relayUrl ? "" : "disabled"}>Онлайн</button>
+              <button class="seg__btn" type="button" data-filter-mode="online">Сеть</button>
             </div>
           </div>
           <div class="filter-row">
@@ -155,7 +155,7 @@ export function createRoomsScreen(ctx) {
       statusNode,
       html`<span>${loading ? "Ищем комнаты…" : `${filtered.length} ${pluralRu(filtered.length, ["комната", "комнаты", "комнат"])}`}</span>
         ${filtered.length > visible.length ? html`<span class="rooms-status__counts">показано ${visible.length}</span>` : ""}
-        <span class="rooms-status__counts">Порты ${localCount} · Онлайн ${onlineCount}</span>
+        <span class="rooms-status__counts">Порты ${localCount} · Сеть ${onlineCount}</span>
         ${relayNote}`,
     );
 
@@ -300,7 +300,7 @@ export function createRoomsScreen(ctx) {
           const spectate = join.dataset.roomStatus !== "lobby";
           void app.joinRoom({
             code: join.dataset.roomJoin,
-            mode: join.dataset.roomSource === "online" ? "online" : "local",
+            mode: room?.lan ? "lan" : join.dataset.roomSource === "online" ? "online" : "local",
             spectate,
             roomName: room?.name ?? "",
           });

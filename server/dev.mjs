@@ -10,6 +10,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { networkInterfaces } from "node:os";
 import { attachRelay } from "./relay.mjs";
 import { deepLinkRootRedirect } from "../js/ui/router.js";
 
@@ -216,12 +217,25 @@ const relay = attachRelay({
   trustProxy: process.env.TRUST_PROXY === "1",
 });
 
+function lanAddresses() {
+  const result = [];
+  for (const addresses of Object.values(networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family === "IPv4" && !address.internal) result.push(address.address);
+    }
+  }
+  return result;
+}
+
 server.listen(PORT, HOST, () => {
   const shown = HOST === "0.0.0.0" ? "localhost" : HOST;
+  const lan = HOST === "0.0.0.0" ? lanAddresses() : [];
   console.log(`\n  МАФИЯ · Ночной город`);
   console.log(`  Игра:     http://${shown}:${PORT}/`);
   console.log(`  Relay:    ws://${shown}:${PORT}/ws`);
   console.log(`  Комнаты:  http://${shown}:${PORT}/rooms`);
+  for (const ip of lan) console.log(`  LAN:      http://${ip}:${PORT}/`);
+  if (lan.length) console.log(`  Друзья:   откройте LAN-адрес в той же сети`);
   console.log(`  Стоп:     Ctrl+C\n`);
 });
 
