@@ -1,14 +1,42 @@
 /* МАФИЯ · Ночной город — offline shell.
  * Static-only cache. The relay (WebSocket) is never intercepted.
  * Bump VERSION together with js/app.js when shipping new assets.
+ *
+ * Every shell asset is fetched and cached under `?v=VERSION`. The domain is
+ * proxied through Cloudflare, which keeps .js/.css at its edge for hours after
+ * a deploy; a versioned URL is always a cache miss, so a new service worker can
+ * never precache yesterday's files into today's cache.
  */
-const VERSION = "2.0.19";
+const VERSION = "2.0.20";
 const CACHE = `mafia-v${VERSION}`;
 const INDEX = new URL("./index.html", self.location.href).href;
 const SCOPE = new URL("./", self.location.href).href;
 const INDEX_PATH = new URL(INDEX).pathname;
 const SCOPE_PATH = new URL(SCOPE).pathname.replace(/\/+$/, "") || "/";
 const LINKABLE_ROUTES = new Set(["quick", "rooms", "create", "join", "roles", "rules", "settings"]);
+/** Destinations whose responses are tied to the build, not to the URL alone. */
+const VERSIONED = new Set(["script", "style", "image", "manifest"]);
+
+/**
+ * Versioned cache key / network URL for a shell asset. Audio and video are left
+ * alone: re-downloading a megabyte of music on every release is pointless.
+ */
+function cacheKey(input) {
+  const raw = input instanceof Request ? input.url : String(input);
+  const url = new URL(raw, self.location.href);
+  url.hash = "";
+  url.searchParams.set("v", VERSION);
+  return url.href;
+}
+
+function keyFor(request) {
+  return VERSIONED.has(request.destination) ? cacheKey(request.url) : request;
+}
+
+/** Same as keyFor() for calls that only hold a Request or an absolute URL. */
+function fetchTarget(key, request) {
+  return typeof key === "string" ? new Request(key, { cache: "no-cache" }) : request;
+}
 
 const PRECACHE = [
   "./",
@@ -84,7 +112,7 @@ self.addEventListener("install", (event) => {
     (async () => {
       const cache = await caches.open(CACHE);
       // One slow or missing optional asset must not block the whole install.
-      await Promise.allSettled(PRECACHE.map((url) => cache.add(url)));
+      await Promise.allSettled(PRECACHE.map((url) => cache.add(cacheKey(url))));
       await self.skipWaiting();
     })(),
   );
@@ -146,7 +174,9 @@ async function networkFirstNavigation(request) {
   const url = new URL(request.url);
   const shell = isShellNavigation(url);
   const cache = await caches.open(CACHE);
-  const cached = shell ? (await cache.match(INDEX)) || (await cache.match(SCOPE)) : null;
+  const cached = shell
+    ? (await cache.match(cacheKey(INDEX))) || (await cache.match(cacheKey(SCOPE)))
+    : null;
   if (cached) {
     // The installed shell boots instantly; the fresh copy is fetched in the
     // background. Waiting on GitHub Pages over a weak mobile connection is what
@@ -155,7 +185,8 @@ async function networkFirstNavigation(request) {
     return cached;
   }
 
-  const response = await fetchWithTimeout(request, 8000).catch(() => null);
+  const target = shell ? new Request(cacheKey(request.url), { cache: "no-cache" }) : request;
+  const response = await fetchWithTimeout(target, 8000).catch(() => null);
   // GitHub Pages answers pretty client routes with 404.html. Let that page
   // bounce to the document root instead of serving index.html at a deep path,
   // where every relative asset would resolve under the wrong directory.
@@ -163,7 +194,7 @@ async function networkFirstNavigation(request) {
   if (response && response.ok) {
     if (String(response.headers.get("content-type") || "").includes("text/html")) {
       try {
-        if (isShellNavigation(new URL(response.url))) await cache.put(INDEX, response.clone());
+        await cache.put(cacheKey(INDEX), response.clone());
       } catch {
         // Keep the network response even if its URL cannot be parsed.
       }
@@ -175,12 +206,12 @@ async function networkFirstNavigation(request) {
 
 /** Background refresh of the cached shell. Failures are deliberately silent. */
 function refreshShell(request, cache) {
-  fetchWithTimeout(request, 8000)
+  const target = new Request(cacheKey(request.url), { cache: "no-cache" });
+  fetchWithTimeout(target, 8000)
     .then(async (response) => {
       if (!response || !response.ok) return;
       if (!String(response.headers.get("content-type") || "").includes("text/html")) return;
-      if (!isShellNavigation(new URL(response.url))) return;
-      await cache.put(INDEX, response.clone());
+      await cache.put(cacheKey(INDEX), response.clone());
     })
     .catch(() => {});
 }
@@ -263,11 +294,12 @@ function hasFileExtension(path) {
 
 async function cacheFirst(request) {
   const cache = await caches.open(CACHE);
-  const cached = await cache.match(request);
+  const key = keyFor(request);
+  const cached = await cache.match(key);
   if (cached) return cached;
   try {
-    const response = await fetch(request);
-    if (response && response.ok) cache.put(request, response.clone());
+    const response = await fetch(fetchTarget(key, request));
+    if (response && response.ok) cache.put(key, response.clone());
     return response;
   } catch {
     return new Response("", { status: 504, statusText: "Offline" });
@@ -276,10 +308,11 @@ async function cacheFirst(request) {
 
 async function staleWhileRevalidate(request, event) {
   const cache = await caches.open(CACHE);
-  const cached = await cache.match(request);
-  const network = fetch(request)
+  const key = keyFor(request);
+  const cached = await cache.match(key);
+  const network = fetch(fetchTarget(key, request))
     .then((response) => {
-      if (response && response.ok) cache.put(request, response.clone());
+      if (response && response.ok) cache.put(key, response.clone());
       return response;
     })
     .catch(() => null);
