@@ -188,7 +188,7 @@ export function createGameScreen(ctx, initialView) {
       session.mode === "online"
         ? html`<span class="badge badge--town">${icon("wifi", { size: 10 })} онлайн</span>`
         : session.mode === "lan"
-          ? html`<span class="badge badge--town">${icon("monitor", { size: 10 })} локальная сеть</span>`
+          ? html`<span class="badge badge--town">${icon("monitor", { size: 10 })} по IP</span>`
           : session.spectatorOnly
             ? html`<span class="badge badge--violet">${icon("eye", { size: 10 })} наблюдение</span>`
             : session.mode === "local"

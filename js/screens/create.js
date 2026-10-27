@@ -58,7 +58,7 @@ export function createCreateScreen(ctx) {
     if (!node) return;
     node.textContent = sameOrigin
       ? `Сервер найден: ${sameOrigin.replace(/^wss?:/, "ws:")}`
-      : "Сервер не найден. Запустите npm start и откройте игру по адресу компьютера в локальной сети.";
+      : "Сервер не найден. Запустите npm start — тогда игроки смогут зайти по вашему IP.";
   };
 
   const htmlScreen = html`<div class="screen">
@@ -81,21 +81,21 @@ export function createCreateScreen(ctx) {
                   <span class="mode-option__icon">${icon("monitor", { size: 20 })}</span>
                   <span>
                     <b>Порты</b>
-                    <span>Вкладки этого браузера. Без сервера — работает на GitHub Pages и на mafia.rb-o.ru.</span>
+                    <span>Вкладки этого браузера. Сайт на GitHub Pages — сервер не нужен.</span>
                   </span>
                 </button>
                 <button class="mode-option ${mode === "lan" ? "is-active" : ""}" type="button" data-create-mode="lan" role="radio" aria-checked="${mode === "lan" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 20 })}</span>
                   <span>
-                    <b>Локальная сеть</b>
-                    <span>Сервер на этом компьютере. Друзья заходят по адресу в той же сети — как в CS2.</span>
+                    <b>По IP</b>
+                    <span>Как в CS2: хост запускает сервер, остальные заходят по адресу. Можно из любого города.</span>
                   </span>
                 </button>
                 <button class="mode-option ${mode === "online" ? "is-active" : ""}" type="button" data-create-mode="online" role="radio" aria-checked="${mode === "online" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("wifi", { size: 20 })}</span>
                   <span>
                     <b>Онлайн</b>
-                    <span>Relay в интернете. Если игра запущена через npm start, адрес найдётся автоматически.</span>
+                    <span>Relay в интернете, без проброса портов. Работает и на GitHub Pages.</span>
                   </span>
                 </button>
               </div>
@@ -119,11 +119,11 @@ export function createCreateScreen(ctx) {
               <div class="relay-field ${mode === "lan" ? "" : "hidden"}" data-lan-field>
                 <div class="notice">
                   ${icon("info", { size: 16 })}
-                  <span data-lan-status>Проверяем локальный сервер…</span>
+                  <span data-lan-status>Проверяем сервер на этом адресе…</span>
                 </div>
                 <p class="field__hint">
-                  Запустите <span class="mono">npm start</span> на компьютере и откройте игру по его адресу в локальной сети.
-                  Ссылка-приглашение будет вести прямо на этот компьютер.
+                  Запустите <span class="mono">npm start</span> на компьютере — ссылка-приглашение будет вести на его IP.
+                  Для игроков из других городов включите проброс порта <span class="mono">8080</span> или Cloudflare Tunnel.
                 </p>
                 <span class="field__error" data-lan-error></span>
               </div>
@@ -260,7 +260,7 @@ export function createCreateScreen(ctx) {
           relayUrl = await detectSameOrigin();
           const error = qs("[data-lan-error]", root);
           if (!relayUrl) {
-            error.textContent = "Локальный relay не найден. Запустите npm start и откройте игру по адресу компьютера.";
+            error.textContent = "Сервер по IP не найден. Запустите npm start и откройте игру по адресу компьютера-хоста.";
             app.playSfx("error");
             return;
           }

@@ -1,7 +1,7 @@
 import { Emitter } from "../core/events.js";
 import { pickOne, randomInt, shuffle } from "../core/random.js";
 import { clampInt, isValidPlayerId, sanitizeChat, sanitizeNick } from "../core/security.js";
-import { getQuickMessage } from "../data/quickChat.js";
+import { getQuickMessage, quickText } from "../data/quickChat.js";
 import {
   ROLES,
   TEAMS,
@@ -934,7 +934,7 @@ export class GameEngine {
       }
     }
 
-    const canonical = quick ? quick.text : sanitizeChat(text);
+    const canonical = quick ? quickText(quick, this.playerMap.get(targetId)?.name) : sanitizeChat(text);
     if (!canonical) return { ok: false, error: "Пустое сообщение." };
     if (canonical.length > 160) return { ok: false, error: "Слишком длинное сообщение." };
 

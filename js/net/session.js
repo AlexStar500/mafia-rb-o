@@ -259,7 +259,7 @@ export class HostSession extends BaseSession {
 
   get onlineLabel() {
     if (this.mode === "online") return "Онлайн";
-    if (this.mode === "lan") return "Локальная сеть";
+    if (this.mode === "lan") return "По IP";
     if (this.mode === "local") return LOCAL_ROOM_LABELS.label;
     return "Тренировка";
   }
@@ -821,7 +821,7 @@ export class GuestSession extends BaseSession {
 
   get onlineLabel() {
     if (this.mode === "online") return "Онлайн";
-    if (this.mode === "lan") return "Локальная сеть";
+    if (this.mode === "lan") return "По IP";
     return LOCAL_ROOM_LABELS.label;
   }
 

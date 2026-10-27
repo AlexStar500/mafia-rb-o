@@ -64,7 +64,7 @@ export function createJoinScreen(ctx) {
                 </button>
                 <button class="mode-option ${mode === "lan" ? "is-active" : ""}" type="button" data-join-mode="lan" role="radio" aria-checked="${mode === "lan" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 18 })}</span>
-                  <span><b>Локальная сеть</b><span>Компьютер-хост в той же сети</span></span>
+                  <span><b>По IP</b><span>Адрес хоста, как в CS2</span></span>
                 </button>
                 <button class="mode-option ${mode === "online" ? "is-active" : ""}" type="button" data-join-mode="online" role="radio" aria-checked="${mode === "online" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("wifi", { size: 18 })}</span>
@@ -93,7 +93,7 @@ export function createJoinScreen(ctx) {
             <div class="relay-field ${mode === "lan" ? "" : "hidden"}" data-join-lan-field>
               <div class="notice">
                 ${icon("info", { size: 16 })}
-                <span data-join-lan-status>Проверяем локальный сервер…</span>
+                <span data-join-lan-status>Проверяем сервер по адресу…</span>
               </div>
               <span class="field__error" data-join-lan-error></span>
             </div>
@@ -121,11 +121,11 @@ export function createJoinScreen(ctx) {
             <div class="panel__body join-help">
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("monitor", { size: 18 })}</span>
-                <div><b>Порты</b><p>Комната живёт во вкладках этого браузера. Сервер не нужен — работает и на GitHub Pages, и на mafia.rb-o.ru.</p></div>
+                <div><b>Порты</b><p>Комната живёт во вкладках этого браузера. Сервер не нужен — сайт на GitHub Pages, работает сразу.</p></div>
               </div>
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("monitor", { size: 18 })}</span>
-                <div><b>Локальная сеть</b><p>Хост запускает <span class="mono">npm start</span> на компьютере, друзья открывают его адрес в той же сети. Сервер и relay — в одном процессе, как LAN в CS2.</p></div>
+                <div><b>По IP</b><p>Как в CS2: хост запускает <span class="mono">npm start</span>, остальные заходят по его адресу с кодом комнаты. Из любого города — нужен проброс порта или Cloudflare Tunnel.</p></div>
               </div>
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("wifi", { size: 18 })}</span>
@@ -172,7 +172,7 @@ export function createJoinScreen(ctx) {
         if (!node) return;
         node.textContent = sameOrigin
           ? `Сервер найден: ${sameOrigin.replace(/^wss?:/, "ws:")}`
-          : "Сервер не найден. Откройте игру по адресу компьютера-хоста.";
+          : "Сервер не найден. Откройте игру по адресу хоста (IP или домен).";
       };
       const detectSameOrigin = () =>
         probeSameOriginRelay().then((url) => {
@@ -255,7 +255,7 @@ export function createJoinScreen(ctx) {
         if (mode === "lan") {
           relayUrl = await detectSameOrigin();
           if (!relayUrl) {
-            lanError.textContent = "Локальный сервер не найден. Откройте игру по адресу компьютера-хоста.";
+            lanError.textContent = "Сервер по этому адресу не найден. Проверьте IP хоста и что npm start запущен.";
             app.playSfx("error");
             return;
           }

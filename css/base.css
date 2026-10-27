@@ -232,7 +232,6 @@ a:hover {
     0 0 120px 30px rgba(216, 75, 87, 0.08);
   opacity: 0.72;
   filter: saturate(0.85);
-  animation: moon-breathe 12s var(--ease-in-out) infinite;
 }
 
 .atmosphere__moon::after {
@@ -241,6 +240,14 @@ a:hover {
   inset: -35%;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(240, 217, 166, 0.14), transparent 62%);
+  opacity: 0.7;
+}
+
+/* The scene is static by default: animated full-screen layers were the main
+   reason the game dropped below 40 fps on laptops and phones. Motion is an
+   opt-in (`Эффекты: полные`) and is transform/opacity only. */
+.fx-full .atmosphere__moon::after {
+  animation: moon-breathe 12s var(--ease-in-out) infinite;
 }
 
 .atmosphere__fog {
@@ -248,10 +255,19 @@ a:hover {
   width: 70vw;
   height: 40vh;
   border-radius: 50%;
-  filter: blur(50px);
   opacity: 0.22;
-  background: radial-gradient(ellipse at center, rgba(120, 140, 190, 0.35), transparent 68%);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(120, 140, 190, 0.28) 0%,
+    rgba(120, 140, 190, 0.17) 34%,
+    rgba(120, 140, 190, 0.07) 56%,
+    transparent 74%
+  );
+}
+
+.fx-full .atmosphere__fog {
   animation: fog-drift 34s linear infinite;
+  will-change: transform;
 }
 
 .atmosphere__fog--a {
@@ -270,7 +286,7 @@ a:hover {
 
 .atmosphere__rain {
   position: absolute;
-  inset: -20% -10%;
+  inset: -220px -10% 0 -10%;
   background-image: repeating-linear-gradient(
     104deg,
     transparent 0 12px,
@@ -278,8 +294,12 @@ a:hover {
     transparent 13px 27px
   );
   background-size: 220px 220px;
-  animation: rain-fall 1.15s linear infinite;
   opacity: 0.55;
+}
+
+.fx-full .atmosphere__rain {
+  animation: rain-fall 1.15s linear infinite;
+  will-change: transform;
 }
 
 .atmosphere__grain {
@@ -486,33 +506,31 @@ a:hover {
 @keyframes moon-breathe {
   0%,
   100% {
-    filter: saturate(0.85) brightness(1);
-    transform: translateY(0);
+    opacity: 0.55;
   }
   50% {
-    filter: saturate(0.95) brightness(1.06);
-    transform: translateY(-6px);
+    opacity: 1;
   }
 }
 
 @keyframes fog-drift {
   from {
-    transform: translateX(-4vw) translateY(0) scale(1);
+    transform: translate3d(-4vw, 0, 0) scale(1);
   }
   50% {
-    transform: translateX(6vw) translateY(-2vh) scale(1.08);
+    transform: translate3d(6vw, -2vh, 0) scale(1.08);
   }
   to {
-    transform: translateX(-4vw) translateY(0) scale(1);
+    transform: translate3d(-4vw, 0, 0) scale(1);
   }
 }
 
 @keyframes rain-fall {
   from {
-    background-position: 0 0;
+    transform: translate3d(0, 0, 0);
   }
   to {
-    background-position: 0 220px;
+    transform: translate3d(-60px, 220px, 0);
   }
 }
 
@@ -607,6 +625,29 @@ body.reduced-motion *::after {
   animation-duration: 0.001ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.001ms !important;
+}
+
+/* Low-effects mode: same palette, no compositing stunts. Added automatically
+   when the device cannot hold ~50 fps. */
+.fx-lite *,
+.fx-lite *::before,
+.fx-lite *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.fx-lite .atmosphere__fog,
+.fx-lite .atmosphere__rain,
+.fx-lite .atmosphere__grain {
+  display: none;
+}
+
+.fx-lite .panel,
+.fx-lite .modal,
+.fx-lite .hud,
+.fx-lite .action-dock,
+.fx-lite .toast {
+  background-color: rgba(9, 11, 19, 0.92);
 }
 
 body.is-hidden .atmosphere {

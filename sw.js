@@ -2,7 +2,7 @@
  * Static-only cache. The relay (WebSocket) is never intercepted.
  * Bump VERSION together with js/app.js when shipping new assets.
  */
-const VERSION = "2.0.16";
+const VERSION = "2.0.17";
 const CACHE = `mafia-v${VERSION}`;
 const INDEX = new URL("./index.html", self.location.href).href;
 const SCOPE = new URL("./", self.location.href).href;
@@ -27,6 +27,7 @@ const PRECACHE = [
   "./js/main.js",
   "./js/audio/manager.js",
   "./js/core/assets.js",
+  "./js/core/effects.js",
   "./js/core/events.js",
   "./js/core/format.js",
   "./js/core/random.js",

@@ -7,6 +7,12 @@ import { nickError } from "../core/security.js";
 import { normalizeRelayEndpoint } from "../net/protocol.js";
 import { BOT_CHAT_LEVELS } from "../data/roles.js";
 
+const EFFECT_OPTIONS = Object.freeze([
+  { id: "auto", name: "Авто" },
+  { id: "full", name: "Полные" },
+  { id: "low", name: "Минимум" },
+]);
+
 function percent(value) {
   return `${Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100)}%`;
 }
@@ -156,10 +162,26 @@ export function createSettingsScreen(ctx) {
           <section class="panel settings-card" id="settings-access">
             <div class="panel__head"><span class="panel__title">${icon("eye", { size: 15 })} Доступность и подсказки</span></div>
             <div class="panel__body settings-rows">
+              <div class="setting-row setting-row--stack">
+                <span class="setting-row__text">
+                  <span class="setting-row__title">Эффекты</span>
+                  <span class="setting-row__hint">Туман, дождь и луна. «Авто» сам снижает качество, если браузер не держит 50 fps.</span>
+                </span>
+                <div class="seg" role="group" aria-label="Эффекты">
+                  ${EFFECT_OPTIONS.map(
+                    (option) => html`<button
+                      class="seg__btn ${option.id === settings.effects ? "is-active" : ""}"
+                      type="button"
+                      data-settings-effects="${option.id}"
+                      aria-pressed="${option.id === settings.effects ? "true" : "false"}"
+                    >${option.name}</button>`,
+                  )}
+                </div>
+              </div>
               <label class="setting-row setting-row--switch" for="settings-motion">
                 <span class="setting-row__text">
                   <span class="setting-row__title">Меньше движения</span>
-                  <span class="setting-row__hint">Отключает туман, дождь и длинные анимации. Полезно на слабых телефонах.</span>
+                  <span class="setting-row__hint">Убирает все анимации интерфейса. Полезно, если от движения укачивает.</span>
                 </span>
                 <span class="switch">
                   <input id="settings-motion" type="checkbox" data-settings-motion ${settings.reducedMotion ? html`checked` : ""} />
@@ -231,9 +253,9 @@ export function createSettingsScreen(ctx) {
               <div class="notice">
                 ${icon("info", { size: 16 })}
                 <span>
-                  GitHub Pages и mafia.rb-o.ru отдают только файлы игры и не запускают сервер. Для других устройств есть два пути:
-                  «Локальная сеть» (<span class="mono">npm start</span> на компьютере, друзья заходят по его адресу) или онлайн-relay
-                  в интернете. Без сервера работают тренировка и «Порты» — комнаты в соседних вкладках.
+                  Сайт лежит на GitHub Pages и отдаёт только файлы игры — сервер там не запускается. Для других устройств есть два пути:
+                  «По IP» (как в CS2: <span class="mono">npm start</span> у хоста, остальные заходят по адресу) или онлайн-relay.
+                  Без сервера работают тренировка и «Порты» — комнаты в соседних вкладках.
                 </span>
               </div>
               <label class="field settings-relay" for="settings-relay">
@@ -500,6 +522,17 @@ export function createSettingsScreen(ctx) {
 
         if (target.closest("[data-settings-preview-sfx]")) {
           app.playSfx("start");
+          return;
+        }
+
+        const effects = target.closest("[data-settings-effects]");
+        if (effects) {
+          settings = app.updateSettings({ effects: effects.dataset.settingsEffects }) ?? settings;
+          for (const button of qsa("[data-settings-effects]", root)) {
+            button.classList.toggle("is-active", button === effects);
+            button.setAttribute("aria-pressed", button === effects ? "true" : "false");
+          }
+          app.playSfx("click");
           return;
         }
 

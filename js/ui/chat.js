@@ -3,7 +3,7 @@ import { icon } from "./icons.js";
 import { toast } from "./toast.js";
 import { openModal, closeModal } from "./modal.js";
 import { avatar } from "./components.js";
-import { QUICK_CATEGORIES, QUICK_BY_CAT } from "../data/quickChat.js";
+import { QUICK_CATEGORIES, QUICK_BY_CAT, quickPreview } from "../data/quickChat.js";
 import { formatShortTime } from "../core/format.js";
 
 const CHANNEL_META = Object.freeze({
@@ -367,6 +367,7 @@ export class ChatUI {
     const name = person?.name ?? message.name ?? "Кто-то";
     const playerForAvatar = person ?? { name, color: message.color, alive: true };
     const target = message.targetId ? this.players.get(message.targetId) : null;
+    const targetInText = target && String(message.text ?? "").toLowerCase().includes(String(target.name ?? "").toLowerCase());
     const channel = message.channel && this.channel === "all" ? CHANNEL_META[message.channel]?.name : "";
     const isSelf = message.playerId === this.selfId;
     const node = document.createElement("article");
@@ -381,7 +382,7 @@ export class ChatUI {
           <time class="chat__time" datetime="${new Date(Number(message.at) || Date.now()).toISOString()}">${formatShortTime(message.at)}</time>
         </div>
         <p class="chat__msg-text">${message.text}</p>
-        ${target
+        ${target && !targetInText
           ? html`<span class="chat__target">${icon("target", { size: 11 })} ${target.name}</span>`
           : ""}
         ${message.roleId
@@ -486,7 +487,7 @@ export class ChatUI {
           <button class="btn btn--quiet btn--sm" type="button" data-quick-back>
             ${icon("back", { size: 15 })} Назад
           </button>
-          <p class="quick-target__phrase">«${phrase.text}»</p>
+          <p class="quick-target__phrase">«${quickPreview(phrase)}»</p>
           <p class="quick-target__hint">Кому это адресовано? Выберите игрока — без него фраза потеряет смысл.</p>
           ${state.targets.length
             ? html`<div class="quick-target__grid">
@@ -524,7 +525,7 @@ export class ChatUI {
         html`<div class="quick-chat__list">
           ${phrases.map(
             (phrase) => html`<button class="quick-chat__phrase" type="button" data-quick-phrase="${phrase.id}">
-              <span>${phrase.text}</span>
+              <span>${quickPreview(phrase)}</span>
               ${phrase.needsTarget ? html`<span class="quick-chat__target-icon">${icon("target", { size: 13 })}</span>` : ""}
             </button>`,
           )}

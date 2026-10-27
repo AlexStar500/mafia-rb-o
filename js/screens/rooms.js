@@ -24,7 +24,7 @@ function roomCard(room) {
     <div class="room-card__body">
       <h3 class="room-card__name">${room.name}</h3>
       <p class="room-card__host">
-        ${icon("crown", { size: 13 })} ${room.hostName || "Хост"} · ${room.source === "online" ? (room.lan ? "локальная сеть" : "по сети") : "этот браузер"}
+        ${icon("crown", { size: 13 })} ${room.hostName || "Хост"} · ${room.source === "online" ? (room.lan ? "по IP" : "по сети") : "этот браузер"}
       </p>
       <div class="room-card__meta">
         <span>${icon("users", { size: 14 })} <b>${room.players}</b>/${room.maxPlayers}</span>
@@ -73,8 +73,8 @@ export function createRoomsScreen(ctx) {
           <span class="eyebrow">${icon("users", { size: 13 })} Живые комнаты</span>
           <h1 class="page-title">Найдите свой город</h1>
           <p class="page-sub">
-            «Порты» живут во вкладках этого браузера. «Локальная сеть» — сервер на вашем компьютере и друзья по адресу в той же сети.
-            «Онлайн» идёт через relay: сам GitHub Pages или mafia.rb-o.ru сетевую игру не заменяет.
+            «Порты» живут во вкладках этого браузера. «По IP» — как в CS2: хост запускает сервер, остальные заходят по адресу, хоть из другого города.
+            «Онлайн» идёт через relay. Сам сайт лежит на GitHub Pages — там доступны «Порты» и «Онлайн».
           </p>
         </div>
         <button class="btn btn--primary" type="button" data-go-create>${icon("plus", { size: 17 })} Создать</button>

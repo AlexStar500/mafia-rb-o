@@ -16,14 +16,14 @@ export const QUICK_CATEGORIES = Object.freeze([
 
 export const QUICK_MESSAGES = Object.freeze([
   // Обвинения
-  { id: "acc-1", cat: "accuse", intent: "accuse", needsTarget: true, text: "Это он. Слишком спокойный." },
-  { id: "acc-2", cat: "accuse", intent: "accuse", needsTarget: true, text: "Его история не сходится." },
-  { id: "acc-3", cat: "accuse", intent: "accuse", needsTarget: true, text: "Он слишком много знает для мирного." },
-  { id: "acc-4", cat: "accuse", intent: "accuse", needsTarget: true, text: "Я не верю ни одному его слову." },
-  { id: "acc-5", cat: "accuse", intent: "accuse", needsTarget: true, text: "Он защищает того, кого стоит повесить." },
-  { id: "acc-6", cat: "accuse", intent: "accuse", needsTarget: true, text: "Слишком удобно молчит." },
-  { id: "acc-7", cat: "accuse", intent: "accuse", needsTarget: true, text: "Ставлю на него." },
-  { id: "acc-8", cat: "accuse", intent: "accuse", needsTarget: true, text: "Он путается в именах и голосах." },
+  { id: "acc-1", cat: "accuse", intent: "accuse", needsTarget: true, text: "Я бы начал с игрока {target}." },
+  { id: "acc-2", cat: "accuse", intent: "accuse", needsTarget: true, text: "История игрока {target} не сходится." },
+  { id: "acc-3", cat: "accuse", intent: "accuse", needsTarget: true, text: "Игрок {target} слишком много знает для мирного." },
+  { id: "acc-4", cat: "accuse", intent: "accuse", needsTarget: true, text: "Я не верю ни одному слову игрока {target}." },
+  { id: "acc-5", cat: "accuse", intent: "accuse", needsTarget: true, text: "Игрок {target} защищает тех, кого стоит повесить." },
+  { id: "acc-6", cat: "accuse", intent: "accuse", needsTarget: true, text: "Игрок {target} слишком удобно молчит." },
+  { id: "acc-7", cat: "accuse", intent: "accuse", needsTarget: true, text: "Ставлю на игрока {target}." },
+  { id: "acc-8", cat: "accuse", intent: "accuse", needsTarget: true, text: "Игрок {target} путается в именах и голосах." },
 
   // Защита
   { id: "def-1", cat: "defend", intent: "defend", text: "Я мирный. Без роли." },
@@ -40,28 +40,28 @@ export const QUICK_MESSAGES = Object.freeze([
   { id: "role-2", cat: "role", intent: "claim-doctor", text: "Я доктор." },
   { id: "role-3", cat: "role", intent: "claim-civilian", text: "Я обычный мирный." },
   { id: "role-4", cat: "role", intent: "claim-jester", text: "Я шут. Не голосуйте за меня." },
-  { id: "role-5", cat: "role", intent: "result-mafia", needsTarget: true, text: "Моя проверка: он мафия." },
-  { id: "role-6", cat: "role", intent: "result-clean", needsTarget: true, text: "Моя проверка: он чист." },
+  { id: "role-5", cat: "role", intent: "result-mafia", needsTarget: true, text: "Моя проверка: игрок {target} — мафия." },
+  { id: "role-6", cat: "role", intent: "result-clean", needsTarget: true, text: "Моя проверка: игрок {target} чист." },
   { id: "role-7", cat: "role", intent: "role-info", text: "У меня есть информация, но не всем её стоит слышать." },
   { id: "role-8", cat: "role", intent: "role-late", text: "Раскроюсь, если будет нужно." },
 
   // Вопросы
   { id: "q-1", cat: "question", intent: "question", text: "Кто что видел ночью?" },
   { id: "q-2", cat: "question", intent: "question", text: "Почему все молчат?" },
-  { id: "q-3", cat: "question", intent: "question", needsTarget: true, text: "Кто-нибудь верит ему?" },
+  { id: "q-3", cat: "question", intent: "question", needsTarget: true, text: "Кто-нибудь верит словам игрока {target}?" },
   { id: "q-4", cat: "question", intent: "question", text: "Кого проверил шериф?" },
   { id: "q-5", cat: "question", intent: "question", text: "Почему голос именно против меня?" },
   { id: "q-6", cat: "question", intent: "question", text: "Кто ещё сомневается?" },
-  { id: "q-7", cat: "question", intent: "question", needsTarget: true, text: "Кто голосует вместе с ним?" },
-  { id: "q-8", cat: "question", intent: "question", needsTarget: true, text: "Что мы теряем, если повесим его?" },
+  { id: "q-7", cat: "question", intent: "question", needsTarget: true, text: "Кто голосует вместе с игроком {target}?" },
+  { id: "q-8", cat: "question", intent: "question", needsTarget: true, text: "Что мы теряем, если повесим игрока {target}?" },
 
   // Голосование
-  { id: "vote-1", cat: "vote", intent: "vote-call", needsTarget: true, text: "Голосуем против него." },
+  { id: "vote-1", cat: "vote", intent: "vote-call", needsTarget: true, text: "Голосуем против игрока {target}." },
   { id: "vote-2", cat: "vote", intent: "vote-call", text: "Собираем голоса." },
   { id: "vote-3", cat: "vote", intent: "vote-call", text: "Не голосуйте без доказательств." },
   { id: "vote-4", cat: "vote", intent: "vote-call", text: "Нужен второй голос." },
   { id: "vote-5", cat: "vote", intent: "skip", text: "Я пропускаю." },
-  { id: "vote-6", cat: "vote", intent: "vote-call", needsTarget: true, text: "Он не должен дожить до утра." },
+  { id: "vote-6", cat: "vote", intent: "vote-call", needsTarget: true, text: "Игрок {target} не доживёт до утра." },
   { id: "vote-7", cat: "vote", intent: "vote-call", text: "Давайте решим сейчас." },
   { id: "vote-8", cat: "vote", intent: "vote-call", text: "Я меняю мнение. Дайте время." },
 
@@ -71,7 +71,7 @@ export const QUICK_MESSAGES = Object.freeze([
   { id: "night-3", cat: "night", intent: "night", text: "Доктор, прикрой меня." },
   { id: "night-4", cat: "night", intent: "night", text: "Я боюсь этой ночи." },
   { id: "night-5", cat: "night", intent: "night", text: "Мафия уже выбрала." },
-  { id: "night-6", cat: "night", intent: "night", needsTarget: true, text: "Если я умру — ищите его." },
+  { id: "night-6", cat: "night", intent: "night", needsTarget: true, text: "Если я умру — ищите игрока {target}." },
   { id: "night-7", cat: "night", intent: "night", text: "Не ходите по одному." },
   { id: "night-8", cat: "night", intent: "night", text: "Город, держись." },
 
@@ -108,6 +108,22 @@ export const QUICK_BY_CAT = Object.freeze(
 
 export function getQuickMessage(id) {
   return QUICK_BY_ID[id] ?? null;
+}
+
+/**
+ * Fill `{target}` with a nickname. Names are never declined, so every phrase
+ * is written around "игрок {target}" instead of "он/его/ему".
+ */
+export function quickText(phrase, targetName = "…") {
+  const name = String(targetName ?? "").trim() || "…";
+  return String(phrase?.text ?? "").replace(/\{target\}/g, name);
+}
+
+/** Placeholder shown before a target is picked: "Игрок … слишком много знает." */
+export function quickPreview(phrase) {
+  return String(phrase?.text ?? "")
+    .replace(/\{target\}/g, "…")
+    .replace(/…\./g, "…");
 }
 
 export function quickMessageCount() {

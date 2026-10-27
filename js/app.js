@@ -18,6 +18,7 @@ import {
 } from "./core/security.js";
 import { normalizeRelayEndpoint } from "./net/protocol.js";
 import { probeSameOriginRelay, resolveRelayForMode } from "./net/auto.js";
+import { applyEffects, autoTuneEffects } from "./core/effects.js";
 import { initials } from "./core/format.js";
 import { normalizeRoomConfig } from "./data/roles.js";
 import { checkRelay } from "./net/online.js";
@@ -80,7 +81,7 @@ function queryString(values) {
 
 export class App {
   constructor({ settings = loadSettings(), base = null } = {}) {
-    this.version = "2.0.16";
+    this.version = "2.0.17";
     this.settings = normalizeSettings(settings);
     this.playerId = createId("p");
     this.session = null;
@@ -112,6 +113,11 @@ export class App {
     this._renderProfile();
     this._bindBeforeUnload();
     this._bindInstall();
+    autoTuneEffects(this.settings, {
+      onLite: () => {
+        this._effectsLite = true;
+      },
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -258,6 +264,7 @@ export class App {
     document.body.classList.toggle("reduced-motion", this.settings.reducedMotion);
     document.body.classList.toggle("hide-hints", !this.settings.showHints);
     document.body.dataset.botChat = this.settings.botChat;
+    applyEffects(this.settings, { lite: this._effectsLite === true });
     this.audio.setSettings(this.settings);
     this._updateMusicButton();
   }
@@ -901,7 +908,7 @@ export class App {
       if (!relay) {
         this.toast(
           mode === "lan"
-            ? "Локальная сеть не найдена. Запустите npm start на компьютере и откройте игру по его адресу."
+            ? "Сервер по IP не найден. Запустите npm start на компьютере-хосте и откройте игру по его адресу."
             : "Для онлайн-комнаты нужен адрес relay.",
           { tone: "warn" },
         );
@@ -932,7 +939,7 @@ export class App {
           mode === "online"
             ? "Онлайн-комната создана."
             : mode === "lan"
-              ? "Комната в локальной сети создана."
+              ? "Комната по IP создана."
               : "Комната в портах создана.",
       });
       return true;
@@ -958,7 +965,7 @@ export class App {
       if (!relay) {
         this.toast(
           mode === "lan"
-            ? "Локальная сеть не найдена. Откройте игру по адресу компьютера-хоста."
+            ? "Сервер по IP не найден. Откройте игру по адресу компьютера-хоста."
             : "Для онлайн-комнаты нужен адрес relay.",
           { tone: "warn" },
         );
@@ -1230,7 +1237,7 @@ export class App {
         : local
           ? "Порты этого браузера"
           : lan
-            ? "Локальная сеть: ссылка ведёт на компьютер-хост"
+            ? "По IP: ссылка ведёт на компьютер-хост"
             : "Онлайн-комната через relay",
       body: html`<div class="share-box">
         <div class="share-box__code">
@@ -1246,9 +1253,9 @@ export class App {
           <span>${solo
             ? "Тренировка не подключает других игроков. Создайте комнату, чтобы играть вместе."
             : local
-              ? "Порты работают только во вкладках этого браузера. Для других устройств нужен relay в настройках. Один только GitHub Pages или mafia.rb-o.ru сеть не поднимет."
+              ? "Порты работают только во вкладках этого браузера. Для других устройств выберите «По IP» или «Онлайн». Сам сайт на GitHub Pages сеть не поднимет."
               : lan
-                ? "Ссылка ведёт на компьютер-хост. Друзья должны быть в той же сети, а сервер — запущен через npm start. Если в адресе localhost или 127.0.0.1, откройте игру по LAN-адресу из консоли сервера."
+                ? "Как в CS2: ссылка ведёт на адрес хоста. Сервер запускается через npm start. Игроки из других городов подключатся, если открыт порт 8080 (проброс роутера) или Cloudflare Tunnel. Адрес localhost или 127.0.0.1 работает только на самом хосте."
                 : "Ссылка уже содержит адрес relay. Другому игроку не нужно ничего настраивать."}</span>
         </div>
       </div>`,
