@@ -1,0 +1,21 @@
+{
+  "name": "mafia-night-city",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Мафия — атмосферная браузерная игра с реальными игроками, ботами и наблюдательным режимом.",
+  "scripts": {
+    "start": "node server/dev.mjs",
+    "dev": "node --watch server/dev.mjs",
+    "relay": "node server/relay-standalone.mjs",
+    "test": "node --test",
+    "art": "python scripts/generate_art.py",
+    "check": "node --check js/main.js && node --check server/dev.mjs && node --test"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

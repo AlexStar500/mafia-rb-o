@@ -1,0 +1,115 @@
+:root {
+  color-scheme: dark;
+
+  /* Noir palette */
+  --night-0: #05060a;
+  --night-1: #090b12;
+  --night-2: #0f1320;
+  --night-3: #161c2d;
+  --night-4: #1f2740;
+  --ink: #f3ecdd;
+  --ink-soft: #d8d2c4;
+  --ink-dim: #a9a89f;
+  --muted: #8f95a6;
+  --muted-2: #6c7284;
+  --gold: #d9b36c;
+  --gold-soft: #f0d9a5;
+  --gold-deep: #8f6a2f;
+  --crimson: #d84b57;
+  --crimson-soft: #ff7b84;
+  --crimson-deep: #7c1d26;
+  --town: #5cc08a;
+  --town-soft: #9be3bd;
+  --violet: #b07cff;
+  --violet-soft: #d6bcff;
+  --info: #74b9ff;
+  --danger: #ff5d6c;
+  --warn: #f2b35f;
+  --success: #5cc08a;
+
+  --line: rgba(217, 179, 108, 0.15);
+  --line-strong: rgba(217, 179, 108, 0.34);
+  --line-cold: rgba(160, 176, 210, 0.14);
+  --surface: rgba(17, 21, 33, 0.72);
+  --surface-solid: #101522;
+  --surface-2: rgba(27, 33, 50, 0.72);
+  --surface-3: rgba(38, 46, 68, 0.58);
+  --overlay: rgba(3, 4, 8, 0.82);
+
+  --glow-gold: 0 0 38px rgba(217, 179, 108, 0.16);
+  --glow-crimson: 0 0 42px rgba(216, 75, 87, 0.2);
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 16px 44px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 28px 90px rgba(0, 0, 0, 0.6);
+
+  --font-display: "Playfair Display", "Bodoni MT", "Didot", Georgia, "Times New Roman", serif;
+  --font-body: "Inter", "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  --fs-xs: 0.6875rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.9375rem;
+  --fs-md: 1.0625rem;
+  --fs-lg: clamp(1.3rem, 3.2vw, 1.75rem);
+  --fs-xl: clamp(1.7rem, 4.6vw, 2.4rem);
+  --fs-2xl: clamp(2.2rem, 7vw, 3.6rem);
+  --fs-hero: clamp(3.4rem, 17vw, 8rem);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
+  --radius-pill: 999px;
+
+  --topbar-h: 58px;
+  --page-pad: clamp(1rem, 4vw, 2.25rem);
+  --content-max: 1180px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --z-scene: 0;
+  --z-content: 10;
+  --z-topbar: 40;
+  --z-dock: 50;
+  --z-modal: 80;
+  --z-toast: 100;
+
+  /* Phase accents */
+  --phase-night: #6f8bd8;
+  --phase-dawn: #e9a06a;
+  --phase-discussion: #d9b36c;
+  --phase-voting: #e06470;
+  --phase-verdict: #b07cff;
+  --phase-last: #a9b6cf;
+  --phase-end: #d9b36c;
+
+  --team-town: #5cc08a;
+  --team-mafia: #e14c5a;
+  --team-neutral: #b07cff;
+}
+
+@media (max-width: 480px) {
+  :root {
+    --topbar-h: 54px;
+    --page-pad: 1rem;
+  }
+}

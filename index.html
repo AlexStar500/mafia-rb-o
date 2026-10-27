@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#05060a" />
+    <meta
+      name="description"
+      content="МАФИЯ · Ночной город — атмосферная браузерная мафия с живыми игроками, умными ботами, ролями и наблюдением за ИИ-городом."
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Мафия" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self'; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>МАФИЯ · Ночной город</title>
+    <link rel="icon" href="favicon.png" sizes="any" />
+    <link rel="apple-touch-icon" href="assets/img/brand/icon-180.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="css/tokens.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/components.css" />
+    <link rel="stylesheet" href="css/menu.css" />
+    <link rel="stylesheet" href="css/lobby.css" />
+    <link rel="stylesheet" href="css/game.css" />
+    <link rel="stylesheet" href="css/pages.css" />
+    <link rel="stylesheet" href="css/responsive.css" />
+  </head>
+  <body>
+    <div class="atmosphere" id="atmosphere" aria-hidden="true">
+      <div class="atmosphere__moon"></div>
+      <div class="atmosphere__fog atmosphere__fog--a"></div>
+      <div class="atmosphere__fog atmosphere__fog--b"></div>
+      <div class="atmosphere__rain"></div>
+      <div class="atmosphere__grain"></div>
+      <div class="atmosphere__vignette"></div>
+      <svg class="skyline" viewBox="0 0 1440 420" preserveAspectRatio="xMidYMax slice" focusable="false">
+        <path
+          class="skyline__back"
+          d="M0 420V250h44v-36h58v72h30V190h52v-34h44v58h40V144h64v86h36V126h72v94h40v-58h52v-30h38v82h44V168h58v68h32v-40h54v-38h44v78h40V196h62v70h34v-52h48v-28h40v88h44V154h60v96h38v-40h54v-32h40v62h44V190h62v-48h52v82h40v-34h48v92h44V210h56v210z"
+        />
+        <path
+          class="skyline__mid"
+          d="M0 420V300h52v-48h40v66h36V266h64v-40h36v74h44v-30h58v62h34v-78h60v44h38v-22h48v70h42v-52h56v-36h40v62h42v-38h58v70h36v-48h62v58h38v-30h54v-44h40v66h48v-38h58v44h36v-22h50v58h44v-64h58v70h36v-40h54v66h44v-28h58v-36h42v64h46v-44h56v78z"
+        />
+        <path
+          class="skyline__front"
+          d="M0 420V330h60v-20h48v38h40v-32h70v-22h44v50h50v-36h62v42h38v-26h54v-30h46v48h52v-18h60v36h40v-28h58v40h44v-18h62v32h48v-26h56v38h42v-20h64v30h40v-14h58v34h44v-22h60v30h40v-18h58v36z"
+        />
+        <g class="skyline__windows">
+          <rect x="86" y="276" width="4" height="6" />
+          <rect x="98" y="276" width="4" height="6" />
+          <rect x="86" y="290" width="4" height="6" />
+          <rect x="230" y="224" width="4" height="6" />
+          <rect x="242" y="224" width="4" height="6" />
+          <rect x="230" y="238" width="4" height="6" />
+          <rect x="340" y="196" width="4" height="6" />
+          <rect x="352" y="196" width="4" height="6" />
+          <rect x="340" y="210" width="4" height="6" />
+          <rect x="470" y="232" width="4" height="6" />
+          <rect x="482" y="232" width="4" height="6" />
+          <rect x="600" y="206" width="4" height="6" />
+          <rect x="612" y="206" width="4" height="6" />
+          <rect x="600" y="220" width="4" height="6" />
+          <rect x="720" y="250" width="4" height="6" />
+          <rect x="732" y="250" width="4" height="6" />
+          <rect x="840" y="204" width="4" height="6" />
+          <rect x="852" y="204" width="4" height="6" />
+          <rect x="840" y="218" width="4" height="6" />
+          <rect x="980" y="238" width="4" height="6" />
+          <rect x="992" y="238" width="4" height="6" />
+          <rect x="1100" y="212" width="4" height="6" />
+          <rect x="1112" y="212" width="4" height="6" />
+          <rect x="1220" y="246" width="4" height="6" />
+          <rect x="1232" y="246" width="4" height="6" />
+          <rect x="1330" y="220" width="4" height="6" />
+          <rect x="1342" y="220" width="4" height="6" />
+          <rect x="1330" y="234" width="4" height="6" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="app" id="app">
+      <header class="topbar" id="topbar">
+        <div class="topbar__inner">
+          <button class="brand" type="button" data-action="home" aria-label="МАФИЯ Ночной город — на главную">
+            <span class="brand__mark">
+              <img src="assets/img/brand/icon-64.png" width="36" height="36" alt="" />
+            </span>
+            <span class="brand__text">
+              <strong>МАФИЯ</strong>
+              <small>Ночной город</small>
+            </span>
+          </button>
+          <div class="topbar__title" id="topbar-title"></div>
+          <div class="topbar__actions">
+            <button class="btn btn--gold-ghost btn--sm topbar__return hidden" type="button" id="return-game">
+              <span class="topbar__return-icon" aria-hidden="true"></span>
+              <span class="topbar__return-text">В игру</span>
+            </button>
+            <button class="icon-btn" type="button" id="music-toggle" aria-label="Выключить музыку" title="Музыка">
+              <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
+            </button>
+            <button class="icon-btn" type="button" id="settings-btn" aria-label="Настройки" title="Настройки">
+              <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3.1 14H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.5V3h4v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+            </button>
+            <button class="profile-chip" type="button" id="profile-btn" aria-label="Профиль игрока">
+              <span class="profile-chip__avatar" id="profile-avatar" aria-hidden="true"></span>
+              <span class="profile-chip__name" id="profile-name">Игрок</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main id="screen" tabindex="-1">
+        <div class="boot" id="boot">
+          <div class="boot__mark">
+            <img src="assets/img/brand/icon-192.png" width="96" height="96" alt="" />
+          </div>
+          <div class="spinner spinner--lg"></div>
+          <p class="boot__text">Город просыпается…</p>
+        </div>
+      </main>
+
+      <nav class="dock" id="dock" aria-label="Основная навигация">
+        <button class="dock__btn is-active" type="button" data-route="menu">
+          <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10Z"/></svg>
+          <span>Главная</span>
+        </button>
+        <button class="dock__btn" type="button" data-route="rooms">
+          <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.4 4.4"/></svg>
+          <span>Комнаты</span>
+        </button>
+        <button class="dock__btn" type="button" data-route="roles">
+          <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5c3-1.5 5-1 8 0 3-1 5-1.5 8 0-.4 6.5-3 11.5-8 11.5S4.4 14 4 7.5Z"/><path d="M7.5 11.5h2M14.5 11.5h2M9.5 15.5c1.5 1 3.5 1 5 0"/></svg>
+          <span>Роли</span>
+        </button>
+        <button class="dock__btn" type="button" data-route="settings">
+          <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3.1 14H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.5V3h4v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+          <span>Ещё</span>
+        </button>
+      </nav>
+
+      <div class="modal-root" id="modal-root"></div>
+      <div class="toast-root" id="toast-root" role="status" aria-live="polite"></div>
+    </div>
+
+    <noscript>
+      <div class="noscript">Для игры нужен JavaScript. Включите его и обновите страницу.</div>
+    </noscript>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

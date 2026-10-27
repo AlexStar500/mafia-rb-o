@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#05060a" />
+    <title>МАФИЯ · перенаправление</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: radial-gradient(circle at 50% 0%, #171122, #05060a 62%);
+        color: #f3ecdd;
+        font-family: Georgia, "Times New Roman", serif;
+        text-align: center;
+      }
+      main {
+        max-width: 420px;
+        padding: 30px;
+        border: 1px solid rgba(217, 179, 108, 0.26);
+        border-radius: 18px;
+        background: rgba(16, 21, 34, 0.92);
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 1.5rem;
+        letter-spacing: 0.08em;
+      }
+      p {
+        margin: 0;
+        color: #a9a89f;
+        line-height: 1.6;
+      }
+      a {
+        display: inline-block;
+        margin-top: 16px;
+        padding: 12px 22px;
+        border-radius: 10px;
+        background: #d9b36c;
+        color: #090b12;
+        font-weight: 700;
+        text-decoration: none;
+      }
+    </style>
+    <script>
+      (function () {
+        var pathname = location.pathname || "/";
+        var search = location.search || "";
+        var hash = location.hash || "";
+        var routeMatch = pathname.match(/\/(room\/[^/]+|quick|rooms|create|join|roles|rules|settings)\/?$/i);
+        var base = "/";
+        if (routeMatch) {
+          base = pathname.slice(0, routeMatch.index + 1);
+        } else {
+          var segments = pathname.split("/").filter(Boolean);
+          // On a project site the first segment is the repository base.
+          // Unknown short paths fall back to the site root, which is correct
+          // for a user site and converges after one extra hop on a project site.
+          if (segments.length > 1) base = "/" + segments[0] + "/";
+        }
+        document.documentElement.setAttribute("data-home", base);
+
+        // A missing .js or .png must stay a 404, otherwise the browser gets
+        // HTML with a script/image MIME type and hides the real problem.
+        var last = pathname.split("/").pop() || "";
+        if (!routeMatch && /\.[a-z0-9]{1,8}$/i.test(last)) return;
+
+        function copySetting(from, to, key) {
+          var value = from.get(key);
+          if (value) to.set(key, value);
+        }
+        function copyMode(from, to) {
+          var mode = from.get("mode");
+          if (mode === "local" || mode === "online") to.set("mode", mode);
+        }
+
+        var params = new URLSearchParams(search);
+        var target = base;
+        if (routeMatch) {
+          var route = routeMatch[1].replace(/\/+$/, "");
+          if (/^room\//i.test(route)) {
+            var code = "";
+            try {
+              code = decodeURIComponent(route.slice(5)).toUpperCase();
+            } catch (error) {
+              code = "";
+            }
+            if (/^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
+              var roomMode = params.get("mode");
+              // Solo/spectator sessions cannot be restored after a reload.
+              if (roomMode !== "solo" && roomMode !== "spectate") {
+                var room = new URLSearchParams({ room: code });
+                copySetting(params, room, "relay");
+                copyMode(params, room);
+                target = base + "?" + room.toString();
+              }
+            }
+          } else if (route.toLowerCase() === "join") {
+            var joinCode = (params.get("room") || params.get("code") || "")
+              .toUpperCase()
+              .replace(/[^A-Z0-9]/g, "")
+              .slice(0, 6);
+            var out = new URLSearchParams();
+            if (/^[A-HJ-NP-Z2-9]{6}$/.test(joinCode)) {
+              out.set("code", joinCode);
+              copySetting(params, out, "relay");
+              copyMode(params, out);
+            } else {
+              out.set("route", "join");
+              copySetting(params, out, "relay");
+              copyMode(params, out);
+            }
+            target = base + "?" + out.toString();
+          } else {
+            params.set("route", route.toLowerCase());
+            target = base + "?" + params.toString();
+          }
+        } else {
+          // Unknown extensionless routes should reach the app's own 404 screen
+          // instead of silently landing on the menu. The original pathname is
+          // kept in the marker; the app strips its own deployment base.
+          var appPath = pathname.replace(/\/+$/, "") || "/";
+          if (appPath !== "/" && appPath !== "/index.html") {
+            target = base + "?notfound=" + encodeURIComponent(appPath);
+          }
+        }
+        location.replace(target + hash);
+      })();
+    </script>
+  </head>
+  <body>
+    <main>
+      <h1>Город меняет улицы</h1>
+      <p>Перенаправляем на нужный вход. Если этого не произошло — вернитесь на главную.</p>
+      <a href="/" data-home>На главную</a>
+    </main>
+    <script>
+      (function () {
+        var home = document.documentElement.getAttribute("data-home") || "/";
+        var link = document.querySelector("a[data-home]");
+        if (link) link.setAttribute("href", home);
+      })();
+    </script>
+  </body>
+</html>
