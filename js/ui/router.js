@@ -17,13 +17,14 @@ export const ROUTES = Object.freeze([
   "join",
   "roles",
   "rules",
+  "server",
   "settings",
   "session",
   "notFound",
 ]);
 
 const CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/i;
-const LINKABLE_ROUTES = Object.freeze(["quick", "rooms", "create", "join", "roles", "rules", "settings"]);
+const LINKABLE_ROUTES = Object.freeze(["quick", "rooms", "create", "join", "roles", "rules", "server", "settings"]);
 
 function currentLocation() {
   if (typeof location === "undefined") return "/";
@@ -38,7 +39,7 @@ export function detectBasePath(pathname = typeof location !== "undefined" ? loca
   } else if (!path.endsWith("/")) {
     // A deep link such as /repo/room/ABC has no directory marker. Treat the
     // known route segments as app routes, not as part of the base.
-    path = path.replace(/\/(?:room\/[^/]+|quick|rooms|create|join|roles|rules|settings)\/?$/, "/");
+    path = path.replace(/\/(?:room\/[^/]+|quick|rooms|create|join|roles|rules|server|settings)\/?$/, "/");
   }
   return path.replace(/\/+$/, "");
 }
@@ -94,6 +95,7 @@ export function parseRoute(input = currentLocation()) {
     "/join": "join",
     "/roles": "roles",
     "/rules": "rules",
+    "/server": "server",
     "/settings": "settings",
   };
   if (simple[pathname]) return { name: simple[pathname], path, params: {}, query };

@@ -13,7 +13,7 @@ const INDEX = new URL("./index.html", self.location.href).href;
 const SCOPE = new URL("./", self.location.href).href;
 const INDEX_PATH = new URL(INDEX).pathname;
 const SCOPE_PATH = new URL(SCOPE).pathname.replace(/\/+$/, "") || "/";
-const LINKABLE_ROUTES = new Set(["quick", "rooms", "create", "join", "roles", "rules", "settings"]);
+const LINKABLE_ROUTES = new Set(["quick", "rooms", "create", "join", "roles", "rules", "server", "settings"]);
 /** Destinations whose responses are tied to the build, not to the URL alone. */
 const VERSIONED = new Set(["script", "style", "image", "manifest"]);
 
@@ -85,6 +85,7 @@ const PRECACHE = [
   "./js/screens/roles.js",
   "./js/screens/rooms.js",
   "./js/screens/rules.js",
+  "./js/screens/server.js",
   "./js/screens/settings.js",
   "./js/ui/chat.js",
   "./js/ui/components.js",

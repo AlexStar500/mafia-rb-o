@@ -156,7 +156,7 @@ export function createMenuScreen(ctx) {
         <div class="bot-strip">
           ${botLine.map(
             (bot) => html`<button class="bot-card" type="button" data-bot="${bot.id}" title="${bot.name}">
-              <span class="role-art role-art--xs"><img src="${asset(bot.avatar)}" alt="" width="96" height="96" loading="lazy" /></span>
+              <span class="role-art role-art--xs"><img src="${asset(bot.avatar)}" alt="" width="96" height="96" /></span>
               <span>${bot.name}</span>
             </button>`,
           )}

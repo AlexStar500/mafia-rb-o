@@ -81,14 +81,44 @@ export class AudioManager {
     this.sting.setAttribute("playsinline", "");
   }
 
-  _playSting() {
-    if (!this.sting || this._hidden || this.settings.muted) return;
+  _playSting(onEnd) {
+    if (!this.sting || this._hidden || this.settings.muted) {
+      if (onEnd) onEnd();
+      return;
+    }
     try {
       this.sting.currentTime = 0;
       this.sting.volume = Math.min(1, this._musicVolume() + 0.08);
-      this.sting.play().catch(() => {});
+      const onEnded = () => {
+        this.sting.removeEventListener("ended", onEnded);
+        if (onEnd) onEnd();
+      };
+      this.sting.addEventListener("ended", onEnded);
+      this.sting.play().catch(() => {
+        this.sting.removeEventListener("ended", onEnded);
+        if (onEnd) onEnd();
+      });
     } catch {
-      // Ignored: the sting is decoration.
+      if (onEnd) onEnd();
+    }
+  }
+
+  /** Bring the day loop in only after the one-shot dawn sting has finished. */
+  _startDayLoop() {
+    // If the phase moved on to a non-day scene while the sting was playing,
+    // let setScene() have the last word instead of forcing the day loop.
+    if (SCENES[this.scene] !== "day-loop") return;
+    const audio = this.tracks.get("day-loop");
+    if (!audio) return;
+    try {
+      audio.currentTime = 0;
+    } catch {
+      // Some browsers throw before metadata is ready; play() will retry.
+    }
+    const target = !this._hidden ? this._musicVolume() : 0;
+    this._fade(audio, target, 1600);
+    if (!this._hidden && audio.paused && !audio.ended) {
+      audio.play().catch(() => {});
     }
   }
 
@@ -147,7 +177,18 @@ export class AudioManager {
     this._buildTracks();
     const wanted = SCENES[scene] ?? null;
     const trackChanged = wanted !== this._activeTrackName;
-    if (trackChanged && scene === "dawn") this._playSting();
+
+    // Dawn is special: the one-shot sting marks the sunrise, and the day loop
+    // must start only after it finishes — otherwise they overlap.
+    if (trackChanged && scene === "dawn") {
+      for (const [name, audio] of this.tracks) {
+        if (name !== wanted) this._fade(audio, 0, 220);
+      }
+      this._activeTrackName = wanted;
+      this._playSting(() => this._startDayLoop());
+      return;
+    }
+
     for (const [name, audio] of this.tracks) {
       const isWanted = name === wanted;
       if (isWanted && trackChanged) {

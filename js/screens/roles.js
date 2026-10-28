@@ -140,7 +140,7 @@ export function createRolesScreen(ctx) {
           <div class="bot-grid">
             ${BOT_ROSTER.map(
               (bot) => html`<button class="bot-tile" type="button" data-bot="${bot.id}" title="${bot.name}">
-                <span class="role-art role-art--xs"><img src="${asset(bot.avatar)}" alt="" width="96" height="96" loading="lazy" /></span>
+                <span class="role-art role-art--xs"><img src="${asset(bot.avatar)}" alt="" width="96" height="96" /></span>
                 <span class="bot-tile__name">${bot.name}</span>
                 <span class="bot-tile__style">${bot.style}</span>
               </button>`,

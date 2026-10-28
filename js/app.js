@@ -44,6 +44,7 @@ import { createLobbyScreen } from "./screens/lobby.js";
 import { createGameScreen } from "./screens/game.js";
 import { createRolesScreen } from "./screens/roles.js";
 import { createRulesScreen } from "./screens/rules.js";
+import { createServerScreen } from "./screens/server.js";
 import { createSettingsScreen } from "./screens/settings.js";
 
 const DEFAULT_TITLE = "МАФИЯ · Ночной город";
@@ -55,11 +56,12 @@ const ROUTE_TITLES = Object.freeze({
   join: "Вход по коду",
   roles: "Роли и баланс",
   rules: "Как играть",
+  server: "Сеть и серверы",
   settings: "Настройки",
   session: "Игра",
   notFound: "Страница не найдена",
 });
-const INFORMATION_ROUTES = new Set(["roles", "rules", "settings", "notFound"]);
+const INFORMATION_ROUTES = new Set(["roles", "rules", "server", "settings", "notFound"]);
 const DOCK_ROUTE = Object.freeze({
   menu: "menu",
   quick: "menu",
@@ -426,6 +428,9 @@ export class App {
           break;
         case "rules":
           screen = createRulesScreen({ app: this, route });
+          break;
+        case "server":
+          screen = createServerScreen({ app: this, route });
           break;
         case "settings":
           screen = createSettingsScreen({ app: this, route });

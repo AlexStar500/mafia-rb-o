@@ -45,7 +45,7 @@ export function avatar(
   >
     <span class="avatar__inner">
       ${src
-        ? html`<img src="${src}" alt="" width="192" height="192" loading="lazy" decoding="async" />`
+        ? html`<img src="${src}" alt="" width="192" height="192" decoding="async" />`
         : html`<span class="avatar__monogram" aria-hidden="true">${initials(person.name)}</span>`}
     </span>
     ${host ? html`<span class="avatar__crown" title="Хост">${icon("crown", { size: 12 })}</span>` : ""}

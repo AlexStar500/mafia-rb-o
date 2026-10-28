@@ -304,6 +304,7 @@ export function createSettingsScreen(ctx) {
               <div class="row wrap">
                 <button class="btn btn--primary btn--sm" type="button" data-settings-save-relay>${icon("check", { size: 15 })} Сохранить адрес</button>
                 <button class="btn btn--quiet btn--sm" type="button" data-settings-clear-relay ${settings.relayUrl ? "" : "disabled"}>Отключить онлайн</button>
+                <button class="btn btn--quiet btn--sm" type="button" data-go-server>${icon("globe", { size: 14 })} Как поднять сервер</button>
               </div>
               <div class="settings-diagnostics">
                 <div>
@@ -650,6 +651,7 @@ export function createSettingsScreen(ctx) {
 
         if (target.closest("[data-go-rules]")) app.navigate("/rules");
         else if (target.closest("[data-go-roles]")) app.navigate("/roles");
+        else if (target.closest("[data-go-server]")) app.navigate("/server");
       });
     },
     destroy() {
