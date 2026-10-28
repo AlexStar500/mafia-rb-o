@@ -94,7 +94,7 @@
   }
 }
 
-/* Game: stage first, chat underneath -------------------------------------*/
+/* Game: chat on top, then role, then the stage ----------------------------*/
 @media (max-width: 900px) {
   .game-layout {
     display: flex;
@@ -107,19 +107,19 @@
     display: contents;
   }
 
-  .game-role {
-    order: 1;
-  }
-
-  .game-stage {
-    order: 2;
-  }
-
   .game-chat-panel {
-    order: 3;
+    order: 1;
     height: clamp(320px, 46dvh, 440px);
     min-height: 0;
     max-height: none;
+  }
+
+  .game-role {
+    order: 2;
+  }
+
+  .game-stage {
+    order: 3;
   }
 
   .game-chat-slot,
