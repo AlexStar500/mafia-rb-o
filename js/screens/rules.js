@@ -1,7 +1,7 @@
 import { html, qs } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { roleChip, showRoleModal } from "../ui/components.js";
-import { ROLES, ROLE_ORDER } from "../data/roles.js";
+import { ROLES, ROLE_ORDER, allRoles } from "../data/roles.js";
 
 const STEPS = Object.freeze([
   {
@@ -161,7 +161,7 @@ export function createRulesScreen(ctx) {
           <strong>Одна партия</strong>
           <dl class="rules-facts">
             <div><dt>Игроки</dt><dd>4–20</dd></div>
-            <div><dt>Роли</dt><dd>6</dd></div>
+            <div><dt>Роли</dt><dd>${allRoles}</dd></div>
             <div><dt>Ночь</dt><dd>12–90 с</dd></div>
             <div><dt>День</dt><dd>20–240 с</dd></div>
           </dl>

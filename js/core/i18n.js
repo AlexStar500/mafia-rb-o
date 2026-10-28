@@ -197,6 +197,8 @@ function applyPatterns(text) {
   out = out.replace(/Мирные/g, "Civilians");
   out = out.replace(/Близнец/g, "Twin");
   out = out.replace(/Близнецы/g, "Twins");
+  out = out.replace(/(\d+)\s+ролей, живые комнаты и город, который врёт красиво\./g, "$1 roles, living rooms and a city that lies beautifully.");
+  out = out.replace(/(\d+)\s+ролей/g, "$1 roles");
   return out;
 }
 

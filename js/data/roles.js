@@ -326,6 +326,9 @@ export const ROLE_ORDER = Object.freeze([
 
 export const TEAM_ORDER = Object.freeze(["mafia", "town", "neutral"]);
 
+/** Total number of distinct roles in the game (kept in one place for UI copy). */
+export const allRoles = ROLE_ORDER.length;
+
 /** Optional roles with an adjustable count. `sheriff` is always one. */
 export const ROLE_CONFIG_KEYS = Object.freeze([
   "mafia",

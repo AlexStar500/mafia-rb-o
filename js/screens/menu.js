@@ -6,7 +6,7 @@ import { AVATAR_COLORS } from "../core/storage.js";
 import { nickError, sanitizeNick } from "../core/security.js";
 import { asset } from "../core/assets.js";
 import { BOT_ROSTER } from "../data/bots.js";
-import { ROLES } from "../data/roles.js";
+import { allRoles } from "../data/roles.js";
 import { QUICK_MESSAGES } from "../data/quickChat.js";
 
 function botModal(bot) {
@@ -56,11 +56,11 @@ export function createMenuScreen(ctx) {
         <span class="eyebrow">${icon("moon", { size: 13 })} Браузерная мафия · 4–20 игроков</span>
         <h1 class="menu__logo"><span>МАФИЯ</span><small>Ночной город</small></h1>
         <p class="menu__tagline">
-          Шесть ролей, живые комнаты и город, который врёт красиво.
+          ${allRoles} ролей, живые комнаты и город, который врёт красиво.
           <span>Играйте с друзьями, добирайте состав ботами или просто смотрите, как ИИ делит власть.</span>
         </p>
         <div class="menu__stats">
-          <div class="menu__stat"><b>${ROLES ? Object.keys(ROLES).length : 6}</b><span>ролей</span></div>
+          <div class="menu__stat"><b>${allRoles}</b><span>ролей</span></div>
           <div class="menu__stat"><b>20</b><span>игроков</span></div>
           <div class="menu__stat"><b>${QUICK_MESSAGES.length}</b><span>фраз</span></div>
         </div>

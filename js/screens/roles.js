@@ -2,7 +2,7 @@ import { html, mount, qs, qsa } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { roleArt, roleChip, showRoleModal } from "../ui/components.js";
 import { BOT_ROSTER } from "../data/bots.js";
-import { ROLES, ROLE_ORDER, TEAMS, ROLE_LIMITS, computeRoleSetup } from "../data/roles.js";
+import { ROLES, ROLE_ORDER, TEAMS, ROLE_LIMITS, allRoles, computeRoleSetup } from "../data/roles.js";
 import { asset } from "../core/assets.js";
 
 const TEAM_COPY = Object.freeze({
@@ -83,7 +83,7 @@ export function createRolesScreen(ctx) {
     <div class="page roles-page">
       <header class="page-head roles-head">
         <span class="eyebrow">${icon("mask", { size: 13 })} Кодекс ночного города</span>
-        <h1 class="page-title">${ROLE_ORDER.length} ролей. Одна правда.</h1>
+        <h1 class="page-title">${allRoles} ролей. Одна правда.</h1>
         <p class="page-sub">Кто-то убивает, кто-то лечит, кто-то ищет, а кто-то просто очень хочет, чтобы его повесили. Изучите роли и соберите город под свой вкус.</p>
       </header>
 
