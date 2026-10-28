@@ -1,7 +1,7 @@
 import { html, qs, qsa } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { normalizeRelayUrl } from "../core/security.js";
-import { probeSameOriginRelay, resolveRelayForMode } from "../net/auto.js";
+import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM, resolveRelayForMode } from "../net/auto.js";
 import { isValidRoomCode, normalizeRoomCode } from "../core/security.js";
 import { loadRoomRegistry } from "../core/storage.js";
 
@@ -235,14 +235,16 @@ export function createJoinScreen(ctx) {
         let relayUrl = "";
         if (mode === "online") {
           const rawRelay = relayInput.value.trim();
-          relayUrl = normalizeRelayUrl(rawRelay);
-          if (rawRelay && !relayUrl) {
+          const typedRelay = normalizeRelayUrl(rawRelay);
+          if (rawRelay && !typedRelay) {
             error.textContent = "Укажите ws://, wss://, http:// или https:// адрес.";
             relayInput.setAttribute("aria-invalid", "true");
             relayInput.focus({ preventScroll: true });
             return;
           }
-          if (!relayUrl) relayUrl = await resolveRelayForMode("online", "");
+          const isPublicDefault =
+            !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM;
+          relayUrl = isPublicDefault ? await resolveRelayForMode("online", "") : typedRelay;
           if (!relayUrl) {
             error.textContent = "Укажите корректный relay адрес.";
             relayInput.setAttribute("aria-invalid", "true");

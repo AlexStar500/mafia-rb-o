@@ -7,7 +7,7 @@
  * a deploy; a versioned URL is always a cache miss, so a new service worker can
  * never precache yesterday's files into today's cache.
  */
-const VERSION = "2.2.1";
+const VERSION = "2.2.2";
 const CACHE = `mafia-v${VERSION}`;
 const INDEX = new URL("./index.html", self.location.href).href;
 const SCOPE = new URL("./", self.location.href).href;

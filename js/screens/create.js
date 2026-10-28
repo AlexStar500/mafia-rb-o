@@ -2,7 +2,7 @@ import { html, qs, mount } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { RoomForm } from "../ui/roomForm.js";
 import { normalizeRelayUrl } from "../core/security.js";
-import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, resolveRelayForMode } from "../net/auto.js";
+import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM, resolveRelayForMode } from "../net/auto.js";
 import { normalizeRoomConfig, computeRoleSetup, ROLES } from "../data/roles.js";
 
 function localRelayDefault() {
@@ -237,15 +237,19 @@ export function createCreateScreen(ctx) {
         let relayUrl = "";
         if (mode === "online") {
           const rawRelay = relayInput.value.trim();
-          relayUrl = normalizeRelayUrl(rawRelay);
+          const typedRelay = normalizeRelayUrl(rawRelay);
           const error = qs("[data-relay-error]", root);
-          if (rawRelay && !relayUrl) {
+          if (rawRelay && !typedRelay) {
             error.textContent = "Укажите ws://, wss://, http:// или https:// адрес.";
             relayInput.setAttribute("aria-invalid", "true");
             relayInput.focus({ preventScroll: true });
             return;
           }
-          if (!relayUrl) relayUrl = await resolveRelayForMode("online", "");
+          // A prefilled public address means "auto": probe the direct Vercel
+          // edge and the custom domain, so a blocked edge still works.
+          const isPublicDefault =
+            !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM;
+          relayUrl = isPublicDefault ? await resolveRelayForMode("online", "") : typedRelay;
           if (!relayUrl) {
             error.textContent = "Relay не найден. Укажите адрес вручную.";
             relayInput.setAttribute("aria-invalid", "true");

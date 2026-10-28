@@ -7,8 +7,40 @@ import {
 /**
  * Public room relay. The game itself is a static site (GitHub Pages / custom
  * domain); Vercel only hosts this small HTTP relay for online rooms.
+ *
+ * `PUBLIC_HTTP_RELAY` is the direct `*.vercel.app` address. Some networks
+ * cannot reach the edge IP it resolves to, so the custom domain is probed as
+ * a fallback once its CNAME exists (`relay.mafia.rb-o.ru`).
  */
 export const PUBLIC_HTTP_RELAY = "https://mafiarbovercel.vercel.app/api";
+export const PUBLIC_HTTP_RELAY_CUSTOM = "https://relay.mafia.rb-o.ru/api";
+
+async function probeHttpBase(base, timeout = 1200) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(`${base}/health`, {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return false;
+    const data = await response.json();
+    return data?.ok === true && data?.service === "mafia-relay" && data?.http === true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function publicHttpRelay() {
+  for (const base of [PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM]) {
+    if (await probeHttpBase(base)) return base;
+  }
+  return PUBLIC_HTTP_RELAY;
+}
+
 
 /**
  * The same Node process can serve the app and the WebSocket relay. On a laptop
@@ -124,5 +156,5 @@ export async function resolveRelayForMode(mode, explicit = "", options = {}) {
   if (httpRelay) return httpRelay;
   const wsRelay = await probeSameOriginRelay(options);
   if (wsRelay) return wsRelay;
-  return PUBLIC_HTTP_RELAY;
+  return publicHttpRelay();
 }
