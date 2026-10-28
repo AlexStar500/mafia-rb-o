@@ -50,7 +50,7 @@ const SECURITY_HEADERS = {
 const NOT_FOUND = resolve(ROOT, "404.html");
 const APP_CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-  "img-src 'self' data: blob:; media-src 'self'; connect-src 'self' ws: wss:; " +
+  "img-src 'self' data: blob:; media-src 'self'; connect-src 'self' ws: wss: http: https:; " +
   "font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; " +
   "frame-ancestors 'none'; upgrade-insecure-requests";
 const NOT_FOUND_CSP =
@@ -236,7 +236,7 @@ server.listen(PORT, HOST, () => {
   console.log(`  Комнаты:  http://${shown}:${PORT}/rooms`);
   for (const ip of lan) console.log(`  По IP:    http://${ip}:${PORT}/`);
   if (lan.length) console.log(`  Друзья:   заходят по этому адресу с кодом комнаты`);
-  console.log(`  Извне:    пробросьте порт ${PORT} на роутере или поднимите Cloudflare Tunnel\n`);
+  console.log(`  Извне:    пробросьте порт ${PORT} на роутере или поднимите туннель до него\n`);
   console.log(`  Стоп:     Ctrl+C\n`);
 });
 
