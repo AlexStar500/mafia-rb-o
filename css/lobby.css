@@ -132,6 +132,25 @@
   flex-direction: column;
   gap: 10px;
   scroll-behavior: smooth;
+  /* Always reserve space for a visible scrollbar so the log never feels like
+     an endless, ungrabbable column on touch devices. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 179, 108, 0.4) rgba(255, 255, 255, 0.04);
+}
+
+.chat__list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat__list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.chat__list::-webkit-scrollbar-thumb {
+  background: rgba(217, 179, 108, 0.4);
+  border-radius: 3px;
 }
 
 .chat__empty {
