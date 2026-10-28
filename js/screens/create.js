@@ -236,46 +236,56 @@ export function createCreateScreen(ctx) {
 
       qs("[data-create-form]", root).addEventListener("submit", async (event) => {
         event.preventDefault();
-        let relayUrl = "";
-        if (mode === "online") {
-          const rawRelay = relayInput.value.trim();
-          const typedRelay = normalizeRelayUrl(rawRelay);
-          const error = qs("[data-relay-error]", root);
-          if (rawRelay && !typedRelay) {
-            error.textContent = "Укажите ws://, wss://, http:// или https:// адрес.";
-            relayInput.setAttribute("aria-invalid", "true");
-            relayInput.focus({ preventScroll: true });
-            return;
+        const submitButton = qs("[data-create-submit]", root);
+        // Show the spinner for the whole prepare (including the relay probe)
+        // and block a second submit while the room is being created.
+        const dismissBusy = app.busy("Готовим комнату…");
+        if (submitButton) submitButton.disabled = true;
+        try {
+          let relayUrl = "";
+          if (mode === "online") {
+            const rawRelay = relayInput.value.trim();
+            const typedRelay = normalizeRelayUrl(rawRelay);
+            const error = qs("[data-relay-error]", root);
+            if (rawRelay && !typedRelay) {
+              error.textContent = "Укажите ws://, wss://, http:// или https:// адрес.";
+              relayInput.setAttribute("aria-invalid", "true");
+              relayInput.focus({ preventScroll: true });
+              return;
+            }
+            // A prefilled public address means "auto": probe the direct Vercel
+            // edge and the custom domain, so a blocked edge still works.
+            const isPublicDefault =
+              !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM;
+            relayUrl = isPublicDefault ? await resolveRelayForMode("online", "") : typedRelay;
+            if (!relayUrl) {
+              error.textContent = "Relay не найден. Укажите адрес вручную.";
+              relayInput.setAttribute("aria-invalid", "true");
+              relayInput.focus({ preventScroll: true });
+              app.playSfx("error");
+              return;
+            }
+            qs("[data-relay-error]", root).textContent = "";
+            relayInput.removeAttribute("aria-invalid");
+            app.updateSettings({ relayUrl });
           }
-          // A prefilled public address means "auto": probe the direct Vercel
-          // edge and the custom domain, so a blocked edge still works.
-          const isPublicDefault =
-            !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM;
-          relayUrl = isPublicDefault ? await resolveRelayForMode("online", "") : typedRelay;
-          if (!relayUrl) {
-            error.textContent = "Relay не найден. Укажите адрес вручную.";
-            relayInput.setAttribute("aria-invalid", "true");
-            relayInput.focus({ preventScroll: true });
-            app.playSfx("error");
-            return;
+          if (mode === "lan") {
+            relayUrl = await detectSameOrigin();
+            const error = qs("[data-lan-error]", root);
+            if (!relayUrl) {
+              error.textContent = "Сервер по IP не найден. Запустите npm start и откройте игру по адресу компьютера-хоста.";
+              app.playSfx("error");
+              return;
+            }
+            error.textContent = "";
           }
-          qs("[data-relay-error]", root).textContent = "";
-          relayInput.removeAttribute("aria-invalid");
-          app.updateSettings({ relayUrl });
+          const autoFill = qs("[data-create-autofill]", root).checked;
+          config = form.getValue();
+          await app.createRoom({ config, mode, relayUrl, autoFillBots: autoFill });
+        } finally {
+          dismissBusy();
+          if (submitButton) submitButton.disabled = false;
         }
-        if (mode === "lan") {
-          relayUrl = await detectSameOrigin();
-          const error = qs("[data-lan-error]", root);
-          if (!relayUrl) {
-            error.textContent = "Сервер по IP не найден. Запустите npm start и откройте игру по адресу компьютера-хоста.";
-            app.playSfx("error");
-            return;
-          }
-          error.textContent = "";
-        }
-        const autoFill = qs("[data-create-autofill]", root).checked;
-        config = form.getValue();
-        void app.createRoom({ config, mode, relayUrl, autoFillBots: autoFill });
       });
     },
     destroy() {

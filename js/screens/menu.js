@@ -118,6 +118,7 @@ export function createMenuScreen(ctx) {
           <button class="btn btn--ghost btn--sm" type="button" data-go="quick">${icon("spark", { size: 15 })} Быстрый старт</button>
           <button class="btn btn--quiet btn--sm" type="button" data-spectate>${icon("eye", { size: 15 })} Смотреть ИИ-город</button>
           <button class="btn btn--quiet btn--sm" type="button" data-go="rules">${icon("scroll", { size: 15 })} Как играть</button>
+          <button class="btn btn--quiet btn--sm" type="button" data-go="server">${icon("globe", { size: 15 })} Сеть и серверы</button>
         </div>
       </section>
 
@@ -252,7 +253,8 @@ export function createMenuScreen(ctx) {
       root.addEventListener("click", (event) => {
         const target = event.target instanceof Element ? event.target.closest("[data-go]") : null;
         if (!target) return;
-        if (!persist()) {
+        // Help pages don't need a nickname to be reachable.
+        if (!["rules", "roles", "server"].includes(target.dataset.go) && !persist()) {
           toastNick(app, nickname);
           return;
         }

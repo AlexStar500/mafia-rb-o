@@ -54,6 +54,9 @@ const OVERRIDES = Object.freeze({
   "Эфир": "Chat",
   "Итоги": "Results",
   "Язык интерфейса": "Interface language",
+  "Сеть и серверы": "Network and servers",
+  "Сеть и relay": "Network and relay",
+  "Сеть": "Network",
   "Русский или English": "Russian or English",
   "Меню, правила, подсказки и системные сообщения. Ники и чат не переводятся.":
     "Menus, rules, hints and system messages. Nicknames and chat are never translated.",

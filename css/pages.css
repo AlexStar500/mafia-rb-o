@@ -635,6 +635,12 @@ button.quick-card:hover {
   color: var(--muted);
 }
 
+/* Game-mode picker stacks vertically: one full-width button per mode, with
+   its short description readable underneath the title. */
+.mode-picker--stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .relay-field {
   margin-top: var(--space-3);
   padding-top: var(--space-3);

@@ -171,7 +171,7 @@ export class RoomForm {
 
         <div class="form-section">
           <span class="form-section__title">${icon("spark", { size: 15 })} Режим</span>
-          <div class="mode-picker" role="group" aria-label="Режим игры">
+          <div class="mode-picker mode-picker--stack" role="group" aria-label="Режим игры">
             ${MODE_ORDER.map((modeId) => {
               const mode = ROOM_MODES[modeId];
               return html`<button
