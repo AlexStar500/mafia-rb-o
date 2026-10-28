@@ -8,6 +8,7 @@
  */
 
 import { Emitter } from "../core/events.js";
+import { textOf } from "../core/format.js";
 import { isValidPlayerId, sanitizeNick } from "../core/security.js";
 import { cleanPeer, isHttpRelayUrl, normalizeHttpRelayUrl } from "./protocol.js";
 
@@ -34,7 +35,7 @@ async function fetchJson(url, { method = "GET", body = null, timeout = REQUEST_T
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) {
-      const error = new Error(data?.error || `Relay ответил ${response.status}.`);
+      const error = new Error(textOf(data?.error, `Relay ответил ${response.status}.`));
       error.status = response.status;
       throw error;
     }
@@ -115,7 +116,7 @@ class HttpAdapter extends Emitter {
         )}&since=${this.cursor}`,
       );
       const data = await fetchJson(url, { timeout: this.timeout });
-      if (!data?.ok) throw new Error(data?.error || "Relay не ответил.");
+      if (!data?.ok) throw new Error(textOf(data?.error, "Relay не ответил."));
       this._fails = 0;
       const events = Array.isArray(data.events) ? data.events : [];
       for (const event of events) {
@@ -153,7 +154,7 @@ class HttpAdapter extends Emitter {
     this._unwatchVisibility();
     if (emit && !this._closedEmitted) {
       this._closedEmitted = true;
-      this.emit("closed", { reason: String(reason || "Соединение закрыто.") });
+      this.emit("closed", { reason: textOf(reason, "Соединение закрыто.") });
     }
   }
 
@@ -222,7 +223,7 @@ export class HttpHostAdapter extends HttpAdapter {
       timeout: this.timeout,
     });
     if (!data?.ok || !data.code || !data.hostId || !data.token) {
-      throw new Error(data?.error || "Relay не подтвердил комнату.");
+      throw new Error(textOf(data?.error, "Relay не подтвердил комнату."));
     }
     this.code = data.code;
     this.selfId = data.hostId;
@@ -255,7 +256,7 @@ export class HttpHostAdapter extends HttpAdapter {
         return;
       }
       case "closed": {
-        this._shutdown(String(event.reason ?? "Комната закрыта."));
+        this._shutdown(textOf(event.reason, "Комната закрыта."));
         return;
       }
       default:
@@ -349,7 +350,7 @@ export class HttpGuestAdapter extends HttpAdapter {
       timeout: this.timeout,
     });
     if (!data?.ok || !data.peerId || !data.hostId || !data.token) {
-      throw new Error(data?.error || "Комната не ответила.");
+      throw new Error(textOf(data?.error, "Комната не ответила."));
     }
     this.selfId = data.peerId;
     this.hostId = data.hostId;
@@ -377,11 +378,11 @@ export class HttpGuestAdapter extends HttpAdapter {
         return;
       }
       case "closed": {
-        this._shutdown(String(event.reason ?? "Комната закрыта."));
+        this._shutdown(textOf(event.reason, "Комната закрыта."));
         return;
       }
       case "denied": {
-        this._shutdown(String(event.reason ?? "Вход отклонён."));
+        this._shutdown(textOf(event.reason, "Вход отклонён."));
         return;
       }
       default:

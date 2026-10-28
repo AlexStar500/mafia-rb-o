@@ -19,6 +19,7 @@ import {
 } from "./core/security.js";
 import { resolveRelayForMode } from "./net/auto.js";
 import { applyEffects, autoTuneEffects } from "./core/effects.js";
+import { applyLanguage } from "./core/i18n.js";
 import { initials } from "./core/format.js";
 import { normalizeRoomConfig } from "./data/roles.js";
 import { checkRelay } from "./net/online.js";
@@ -81,7 +82,7 @@ function queryString(values) {
 
 export class App {
   constructor({ settings = loadSettings(), base = null } = {}) {
-    this.version = "2.2.2";
+    this.version = "2.2.4";
     this.settings = normalizeSettings(settings);
     this.playerId = createId("p");
     this.session = null;
@@ -264,6 +265,7 @@ export class App {
     document.body.classList.toggle("reduced-motion", this.settings.reducedMotion);
     document.body.classList.toggle("hide-hints", !this.settings.showHints);
     document.body.dataset.botChat = this.settings.botChat;
+    applyLanguage(this.settings.lang);
     applyEffects(this.settings, { lite: this._effectsLite === true });
     this.audio.setSettings(this.settings);
     this._updateMusicButton();

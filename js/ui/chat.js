@@ -5,7 +5,7 @@ import { openModal, closeModal } from "./modal.js";
 import { avatar } from "./components.js";
 import { ROLE_ORDER, ROLES } from "../data/roles.js";
 import { QUICK_CATEGORIES, QUICK_BY_CAT, quickPreview } from "../data/quickChat.js";
-import { formatShortTime } from "../core/format.js";
+import { formatShortTime, textOf } from "../core/format.js";
 import { asset } from "../core/assets.js";
 
 const CHANNEL_META = Object.freeze({
@@ -383,7 +383,7 @@ export class ChatUI {
           ${channel ? html`<span class="chat__channel-tag">${channel}</span>` : ""}
           <time class="chat__time" datetime="${new Date(Number(message.at) || Date.now()).toISOString()}">${formatShortTime(message.at)}</time>
         </div>
-        <p class="chat__msg-text">${message.text}</p>
+        <p class="chat__msg-text">${textOf(message.text)}</p>
         ${target && !targetInText
           ? html`<span class="chat__target">${icon("target", { size: 11 })} ${target.name}</span>`
           : ""}

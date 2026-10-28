@@ -4,6 +4,8 @@ import { avatar } from "../ui/components.js";
 import { confirmModal } from "../ui/modal.js";
 import { AVATAR_COLORS } from "../core/storage.js";
 import { nickError, normalizeRelayUrl } from "../core/security.js";
+import { textOf } from "../core/format.js";
+import { LANGUAGE_OPTIONS } from "../core/i18n.js";
 import { BOT_CHAT_LEVELS, ROLE_ORDER } from "../data/roles.js";
 
 const EFFECT_OPTIONS = Object.freeze([
@@ -24,7 +26,7 @@ function setRangeFill(input) {
 
 function stateLine(state) {
   if (!state) return "Проверяем…";
-  if (state.error) return state.error;
+  if (state.error) return textOf(state.error, "Relay недоступен.");
   if (state.ok) {
     const parts = [`${state.latency} мс`];
     if (Number.isFinite(Number(state.rooms))) parts.push(`комнат: ${state.rooms}`);
@@ -56,6 +58,31 @@ export function createSettingsScreen(ctx) {
 
       <div class="settings-layout">
         <main class="settings-main">
+          <section class="panel settings-card" id="settings-language">
+            <div class="panel__head">
+              <span class="panel__title">${icon("globe", { size: 15 })} Язык интерфейса</span>
+              <span class="muted">Interface language</span>
+            </div>
+            <div class="panel__body">
+              <div class="setting-row">
+                <span class="setting-row__text">
+                  <span class="setting-row__title">Русский или English</span>
+                  <span class="setting-row__hint">Меню, правила, подсказки и системные сообщения. Ники и чат не переводятся.</span>
+                </span>
+                <div class="seg" role="group" aria-label="Язык интерфейса">
+                  ${LANGUAGE_OPTIONS.map(
+                    (option) => html`<button
+                      class="seg__btn ${option.id === settings.lang ? "is-active" : ""}"
+                      type="button"
+                      data-settings-lang="${option.id}"
+                      aria-pressed="${option.id === settings.lang ? "true" : "false"}"
+                    >${option.short}</button>`,
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+
           <section class="panel settings-card" id="settings-profile">
             <div class="panel__head">
               <span class="panel__title">${icon("mask", { size: 15 })} Профиль</span>
@@ -265,7 +292,7 @@ export function createSettingsScreen(ctx) {
                     data-settings-relay
                     type="url"
                     value="${relayDraft}"
-                    placeholder="https://mafiarbovercel.vercel.app или wss://relay.example/ws"
+                    placeholder="https://relay.mafia.rb-o.ru"
                     autocomplete="off"
                     spellcheck="false"
                   />
@@ -529,6 +556,17 @@ export function createSettingsScreen(ctx) {
           return;
         }
 
+        const languageButton = target.closest("[data-settings-lang]");
+        if (languageButton) {
+          settings = app.updateSettings({ lang: languageButton.dataset.settingsLang }) ?? settings;
+          for (const button of qsa("[data-settings-lang]", root)) {
+            button.classList.toggle("is-active", button === languageButton);
+            button.setAttribute("aria-pressed", button === languageButton ? "true" : "false");
+          }
+          app.playSfx("click");
+          return;
+        }
+
         const chat = target.closest("[data-settings-chat]");
         if (chat) {
           settings = app.updateSettings({ botChat: chat.dataset.settingsChat }) ?? settings;
@@ -559,7 +597,7 @@ export function createSettingsScreen(ctx) {
           const raw = input?.value ?? "";
           const value = raw.trim() ? normalizeRelayUrl(raw) : "";
           if (raw.trim() && !value) {
-            error.textContent = "Некорректный адрес. Пример: https://mafiarbovercel.vercel.app или wss://relay.example/ws";
+            error.textContent = "Некорректный адрес. Пример: https://relay.mafia.rb-o.ru";
             input?.setAttribute("aria-invalid", "true");
             return;
           }

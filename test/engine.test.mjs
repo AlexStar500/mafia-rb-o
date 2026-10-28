@@ -89,6 +89,14 @@ test("per-role counts are honoured and trimmed only for balance", () => {
   assert.ok(tooManyMafia.warnings.length > 0);
 });
 
+test("twins are never left as a lone pair when the roster overflows", () => {
+  // Force heavy trimming: a small city with far more roles than seats.
+  const setup = computeRoleSetup(4, { twin: 1, doctor: 3, judge: 3, musician: 3, jester: 3, puppeteer: 3 });
+  assert.ok(setup.counts.twin === 0 || setup.counts.twin === 2, "twin is always 0 or 2, never 1");
+  assert.equal(setup.ids.filter((id) => id === "twin").length, setup.counts.twin);
+  assert.equal(setup.ids.length, 4);
+});
+
 test("room config clamps hostile values", () => {
   const config = normalizeRoomConfig({
     maxPlayers: 999,
@@ -243,8 +251,21 @@ test("spy reveals an exact role once per day", () => {
   assert.equal(again.ok, false, "one reveal per day");
 
   const view = engine.getView(spy.id);
-  assert.equal(view.day.spy.usedToday, true);
+  assert.equal(view.day, 1, "day stays a number");
+  assert.equal(view.dayActions.spy.usedToday, true);
   assert.equal(view.self.reveals.at(-1).roleId, "mafia");
+});
+
+test("public view keeps the day number apart from day actions", () => {
+  const { engine } = setupEngine({ count: 6 });
+  engine.start(true);
+  setPhase(engine, PHASE.DISCUSSION, 30);
+  const view = engine.getView(engine.players[0].id);
+  assert.equal(typeof view.day, "number");
+  assert.equal(view.day, 1);
+  assert.equal(typeof view.dayActions, "object");
+  assert.ok(view.dayActions, "day actions are exposed under their own key");
+  assert.ok(!String(view.day).includes("[object Object]"));
 });
 
 test("judge kills mafia but dies on a wrong verdict", () => {

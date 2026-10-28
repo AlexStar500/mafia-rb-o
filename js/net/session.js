@@ -1,4 +1,5 @@
 import { Emitter } from "../core/events.js";
+import { textOf } from "../core/format.js";
 import {
   RateLimiter,
   createId,
@@ -139,7 +140,7 @@ export class BaseSession extends Emitter {
     if (this._closedEmitted) return;
     this._closedEmitted = true;
     this.closed = true;
-    this.emit("closed", { reason: String(reason ?? "Комната закрыта.") });
+    this.emit("closed", { reason: textOf(reason, "Комната закрыта.") });
   }
 
   _track(unsubscribe) {
@@ -453,7 +454,7 @@ export class HostSession extends BaseSession {
 
   _notice(peerId, text, tone = "warn") {
     if (!this.adapter?.send) return;
-    this.adapter.send(peerId, { type: "notice", tone, text: String(text).slice(0, 180) });
+    this.adapter.send(peerId, { type: "notice", tone, text: textOf(text, "Сообщение").slice(0, 180) });
   }
 
   _refreshMeta() {
@@ -950,16 +951,16 @@ export class GuestSession extends BaseSession {
       case "notice": {
         this.emit("notice", {
           tone: ["danger", "warn", "info", "town"].includes(payload.tone) ? payload.tone : "info",
-          text: String(payload.text ?? "").slice(0, 180),
+          text: textOf(payload.text).slice(0, 180),
         });
         return;
       }
       case "kicked": {
-        this.close(String(payload.reason ?? "Вас исключили из комнаты."));
+        this.close(textOf(payload.reason, "Вас исключили из комнаты."));
         return;
       }
       case "closed": {
-        this.close(String(payload.reason ?? "Комната закрыта."));
+        this.close(textOf(payload.reason, "Комната закрыта."));
         return;
       }
       case "pong":

@@ -1,4 +1,5 @@
 import { Emitter } from "../core/events.js";
+import { textOf } from "../core/format.js";
 import {
   isValidAvatarId,
   isValidPlayerId,
@@ -155,7 +156,7 @@ class ChannelAdapter extends Emitter {
     }
     if (emit && !wasClosed && !this._closedEmitted) {
       this._closedEmitted = true;
-      this.emit("closed", { reason: String(reason || "Соединение закрыто.") });
+      this.emit("closed", { reason: textOf(reason, "Соединение закрыто.") });
     }
   }
 
@@ -238,17 +239,17 @@ export class OnlineHostAdapter extends ChannelAdapter {
         break;
       }
       case FRAME_TYPES.CLOSED: {
-        this._shutdown(String(frame.reason ?? "Комната закрыта."), { emit: true });
+        this._shutdown(textOf(frame.reason, "Комната закрыта."), { emit: true });
         break;
       }
       case FRAME_TYPES.DENIED: {
-        const reason = String(frame.reason ?? "Вход отклонён.");
+        const reason = textOf(frame.reason, "Вход отклонён.");
         this.emit("denied", { reason });
         this._shutdown(reason, { emit: false });
         break;
       }
       case FRAME_TYPES.ERROR: {
-        const reason = String(frame.reason ?? "Ошибка relay.");
+        const reason = textOf(frame.reason, "Ошибка relay.");
         if (!this.connected) {
           clearTimeout(this._connectTimer);
           this._connectReject?.(new Error(reason));
@@ -375,16 +376,16 @@ export class OnlineGuestAdapter extends ChannelAdapter {
         break;
       }
       case FRAME_TYPES.CLOSED: {
-        this._shutdown(String(frame.reason ?? "Комната закрыта."), { emit: true });
+        this._shutdown(textOf(frame.reason, "Комната закрыта."), { emit: true });
         break;
       }
       case FRAME_TYPES.DENIED: {
-        const reason = String(frame.reason ?? "Вход отклонён.");
+        const reason = textOf(frame.reason, "Вход отклонён.");
         this._shutdown(reason, { emit: true });
         break;
       }
       case FRAME_TYPES.ERROR: {
-        const reason = String(frame.reason ?? "Ошибка relay.");
+        const reason = textOf(frame.reason, "Ошибка relay.");
         if (!this.connected) {
           clearTimeout(this._connectTimer);
           this._connectReject?.(new Error(reason));

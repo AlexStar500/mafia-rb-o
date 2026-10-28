@@ -12,11 +12,11 @@ const SCENES = Object.freeze({
   menu: "night",
   lobby: "night",
   night: "night",
-  dawn: "dayLoop",
-  discussion: "dayLoop",
-  voting: "dayLoop",
-  verdict: "dayLoop",
-  lastWords: "dayLoop",
+  dawn: "day-loop",
+  discussion: "day-loop",
+  voting: "day-loop",
+  verdict: "day-loop",
+  lastWords: "day-loop",
   ended: "night",
   silent: null,
 });
@@ -63,7 +63,7 @@ export class AudioManager {
     if (this._built) return;
     this._built = true;
     const ext = this._installPath;
-    for (const name of ["night", "dayLoop"]) {
+    for (const name of ["night", "day-loop"]) {
       const audio = new Audio(asset(`assets/audio/${name}.${ext}`));
       // Both beds loop. The day bed is the full track; the short `day` sting
       // below marks the exact moment the city wakes up.

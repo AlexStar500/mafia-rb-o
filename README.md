@@ -89,11 +89,11 @@ npx vercel link      # выбрать проект mafiarbovercel
 npx vercel deploy --prod
 ```
 
-Проверка: `https://mafiarbovercel.vercel.app/api/health` возвращает `{"ok":true,"service":"mafia-relay","http":true,"protocol":2,…}`, а `/api/rooms` — список публичных комнат.
+Проверка: `https://relay.mafia.rb-o.ru/api/health` возвращает `{"ok":true,"service":"mafia-relay","http":true,"protocol":2,…}`, а `/api/rooms` — список публичных комнат. (Прямой `https://mafiarbovercel.vercel.app/api/health` отвечает тем же, но в сетях, где заблокированы edge-IP Vercel, работает только поддомен через Cloudflare.)
 
-Клиент уже знает публичный адрес (`PUBLIC_HTTP_RELAY` в `js/net/auto.js`): если у страницы нет своего `/api`, онлайн-режим сам подключается к Vercel. Дополнительно проверяется `relay.mafia.rb-o.ru` — это тот же проект на своём поддомене, он выручает, когда сеть не пускает edge-IP `*.vercel.app`. Поэтому игру можно держать на GitHub Pages, а Vercel использовать только для комнат. Свой relay можно указать вручную в настройках или в ссылке-приглашении.
+Клиент уже знает публичные адреса (`js/net/auto.js`): если у страницы нет своего `/api`, онлайн-режим сначала проверяет `relay.mafia.rb-o.ru`, а затем прямой `mafiarbovercel.vercel.app`. Основной публичный адрес — `relay.mafia.rb-o.ru`, его нужно провести через Cloudflare-прокси, чтобы игра работала и там, где Vercel заблокирован. Поэтому игру можно держать на GitHub Pages, а Vercel использовать только для комнат. Свой relay можно указать вручную в настройках или в ссылке-приглашении.
 
-Чтобы включить поддомен, добавьте в Cloudflare запись `CNAME relay → 519c7b8516c7e157.vercel-dns-017.com` (или `cname.vercel-dns.com`) в режиме **DNS only**. Домен уже добавлен в проект Vercel; после появления записи `/api/health` ответит и на `https://relay.mafia.rb-o.ru`.
+Чтобы включить поддомен, добавьте в Cloudflare запись `CNAME relay → cname.vercel-dns.com` (или `519c7b8516c7e157.vercel-dns-017.com`). Если прямой Vercel-адрес в вашей сети не открывается, включите **Proxy status** (оранжевое облако) — Cloudflare будет сам ходить на Vercel. Для обычной сети достаточно **DNS only**. Домен уже добавлен в проект Vercel; после появления записи `/api/health` ответит и на `https://relay.mafia.rb-o.ru`.
 
 Комнаты хранятся в памяти тёплого инстанса функции. Для дружеских партий этого хватает; при большой аудитории подключите Redis/Upstash за теми же маршрутами, иначе разные инстансы не увидят комнаты друг друга.
 

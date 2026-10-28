@@ -1,5 +1,6 @@
 import { html, qs } from "./dom.js";
 import { icon } from "./icons.js";
+import { textOf } from "../core/format.js";
 
 const MAX_TOASTS = 4;
 const DEDUPE_MS = 4000;
@@ -22,7 +23,7 @@ const live = new Map();
 export function toast(text, { tone = "info", duration = 3600, iconName = null } = {}) {
   const root = qs("#toast-root");
   if (!root) return () => {};
-  const message = String(text ?? "").trim();
+  const message = textOf(text).trim();
   if (!message) return () => {};
 
   const now = Date.now();

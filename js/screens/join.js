@@ -82,7 +82,7 @@ export function createJoinScreen(ctx) {
                   type="text"
                   data-join-relay
                   value="${invitedRelay || settings.relayUrl}"
-                  placeholder="https://mafiarbovercel.vercel.app или wss://relay.example/ws"
+                  placeholder="https://relay.mafia.rb-o.ru"
                   autocomplete="off"
                   spellcheck="false"
                 />

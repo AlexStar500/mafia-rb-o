@@ -8,9 +8,9 @@ import {
  * Public room relay. The game itself is a static site (GitHub Pages / custom
  * domain); Vercel only hosts this small HTTP relay for online rooms.
  *
- * `PUBLIC_HTTP_RELAY` is the direct `*.vercel.app` address. Some networks
- * cannot reach the edge IP it resolves to, so the custom domain is probed as
- * a fallback once its CNAME exists (`relay.mafia.rb-o.ru`).
+ * `PUBLIC_HTTP_RELAY_CUSTOM` is the recommended public address: it can be
+ * proxied through Cloudflare, so it stays reachable on networks that block
+ * the raw `*.vercel.app` edge IPs. `PUBLIC_HTTP_RELAY` is the direct fallback.
  */
 export const PUBLIC_HTTP_RELAY = "https://mafiarbovercel.vercel.app/api";
 export const PUBLIC_HTTP_RELAY_CUSTOM = "https://relay.mafia.rb-o.ru/api";
@@ -35,7 +35,7 @@ async function probeHttpBase(base, timeout = 1200) {
 }
 
 async function publicHttpRelay() {
-  for (const base of [PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM]) {
+  for (const base of [PUBLIC_HTTP_RELAY_CUSTOM, PUBLIC_HTTP_RELAY]) {
     if (await probeHttpBase(base)) return base;
   }
   return PUBLIC_HTTP_RELAY;

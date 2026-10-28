@@ -31,6 +31,7 @@ import {
   normalizeHexColor,
   sanitizeNick,
 } from "../js/core/security.js";
+import { textOf } from "../js/core/format.js";
 
 const PROTOCOL_VERSION = 2;
 const MAX_ROOMS = 500;
@@ -186,7 +187,7 @@ function closeRoom(room, reason) {
   if (room.closed) return;
   room.closed = true;
   room.closedAt = Date.now();
-  room.closeReason = String(reason ?? "Комната закрыта.").slice(0, 140);
+  room.closeReason = textOf(reason, "Комната закрыта.").slice(0, 140);
   room.updatedAt = room.closedAt;
   for (const peer of room.peers.values()) {
     pushEvent(room, peer.id, { type: "closed", reason: room.closeReason });

@@ -1,4 +1,5 @@
 import { Emitter } from "../core/events.js";
+import { textOf } from "../core/format.js";
 import { createId, isValidAvatarId, isValidPlayerId, normalizeHexColor, safeJsonParse, safeStringify, sanitizeNick, isValidRoomCode } from "../core/security.js";
 import { loadRoomRegistry, saveRoomRegistry } from "../core/storage.js";
 import { ROLES } from "../data/roles.js";
@@ -128,12 +129,12 @@ export class LocalHostAdapter extends Emitter {
   }
 
   deny(peerId, reason = "Комната недоступна.") {
-    this.send(peerId, { type: "denied", reason: String(reason).slice(0, 120) });
+    this.send(peerId, { type: "denied", reason: textOf(reason, "Вход отклонён.").slice(0, 120) });
     this.removePeer(peerId);
   }
 
   kick(peerId, reason = "Вас исключили из комнаты.") {
-    this.send(peerId, { type: "kicked", reason: String(reason).slice(0, 120) });
+    this.send(peerId, { type: "kicked", reason: textOf(reason, "Вас исключили из комнаты.").slice(0, 120) });
     this.removePeer(peerId);
   }
 
@@ -255,8 +256,8 @@ export class LocalGuestAdapter extends Emitter {
         if (payload?.type === "denied") {
           settled = true;
           clearTimeout(timer);
-          this.close(payload.reason || "Вход отклонён.");
-          reject(new Error(payload.reason || "Вход отклонён."));
+          this.close(textOf(payload.reason, "Вход отклонён."));
+          reject(new Error(textOf(payload.reason, "Вход отклонён.")));
           return;
         }
         if (payload?.type === "welcome") {
@@ -305,7 +306,7 @@ export class LocalGuestAdapter extends Emitter {
     if (!data || data.v !== MESSAGE_VERSION || data.room !== this.code) return;
     if (data.kind === "closed") {
       if (!data.from || data.from === this.hostId || this.hostId === null) {
-        this.close(data.reason ?? "Комната закрыта.");
+        this.close(textOf(data.reason, "Комната закрыта."));
       }
       return;
     }

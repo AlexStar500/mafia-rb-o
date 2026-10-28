@@ -13,7 +13,9 @@ function localRelayDefault() {
   } catch {
     // ignore
   }
-  return PUBLIC_HTTP_RELAY;
+  // The custom domain is the primary public relay: it sits behind Cloudflare,
+  // so it stays reachable in regions that block raw *.vercel.app edges.
+  return PUBLIC_HTTP_RELAY_CUSTOM;
 }
 
 function summarySetup(config) {
@@ -108,7 +110,7 @@ export function createCreateScreen(ctx) {
                     type="text"
                     data-create-relay
                     value="${settings.relayUrl || localRelayDefault()}"
-                    placeholder="https://mafiarbovercel.vercel.app или wss://relay.example/ws"
+                    placeholder="https://relay.mafia.rb-o.ru"
                     autocomplete="off"
                     spellcheck="false"
                   />

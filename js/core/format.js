@@ -28,11 +28,40 @@ export function playersLabel(count) {
 }
 
 export function dayLabel(day) {
-  return `День ${day}`;
+  return `День ${dayNumber(day)}`;
 }
 
 export function nightLabel(day) {
-  return `Ночь ${day}`;
+  return `Ночь ${dayNumber(day)}`;
+}
+
+/** Coerce anything to a small day number so labels never print "[object Object]". */
+export function dayNumber(value, fallback = 1) {
+  if (value && typeof value === "object") {
+    value = value.day ?? value.number ?? value.value ?? value.count;
+  }
+  const n = Math.trunc(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * Safe, human-readable text for values that cross boundaries (server payloads,
+ * errors, notices). Objects are unwrapped instead of stringified as
+ * "[object Object]".
+ */
+export function textOf(value, fallback = "") {
+  if (value == null) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value instanceof Error) return value.message || fallback;
+  if (typeof value === "object") {
+    for (const key of ["message", "error", "reason", "text", "title", "detail"]) {
+      const nested = value[key];
+      if (typeof nested === "string" && nested.trim()) return nested;
+      if (nested != null && typeof nested !== "object") return String(nested);
+    }
+  }
+  return fallback;
 }
 
 export function percent(value, total) {
@@ -104,7 +133,7 @@ export function downloadText(filename, text, mime = "text/plain") {
 }
 
 export function friendlyError(error) {
-  const raw = String(error?.message ?? error ?? "");
+  const raw = textOf(error);
   if (/Failed to fetch|WebSocket|network/i.test(raw)) return "Связь потеряна. Проверь сеть или порты этого браузера.";
   if (/quota/i.test(raw)) return "Хранилище переполнено. Очисти кэш в настройках.";
   return raw || "Что-то пошло не так.";

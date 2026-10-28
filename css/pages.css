@@ -596,6 +596,45 @@ button.quick-card:hover {
   height: 30px;
 }
 
+/* Game-mode picker inside the room form (uses __option, different markup). */
+.mode-picker__option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--ink-dim);
+  text-align: left;
+  transition: 0.2s ease;
+}
+
+.mode-picker__option:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.mode-picker__option.is-active {
+  border-color: rgba(217, 179, 108, 0.5);
+  background:
+    linear-gradient(150deg, rgba(217, 179, 108, 0.1), transparent 65%),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 0 0 1px rgba(217, 179, 108, 0.12);
+}
+
+.mode-picker__option strong {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.mode-picker__option span {
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 .relay-field {
   margin-top: var(--space-3);
   padding-top: var(--space-3);

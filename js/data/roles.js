@@ -532,13 +532,19 @@ export function computeRoleSetup(playerCount, options = {}, mode = "classic") {
   }
   counts.mafia = Math.max(1, mafiaTarget - specialCount());
 
-  // Everything must fit into the city. Optional roles go first.
+  // Everything must fit into the city. Optional roles go first. Twins are a
+  // fixed pair, so trimming removes both of them, never a lone twin.
   const trimOrder = ["twin", "puppeteer", "jester", "musician", "judge", "doctor"];
   while (usedCount() > n) {
     const roleId = trimOrder.find((id) => counts[id] > 0);
     if (!roleId) break;
-    counts[roleId] -= 1;
-    warnings.push(`${ROLES[roleId].name} ×1 убран: состав не помещается в ${n} игроков.`);
+    if (roleId === "twin") {
+      counts.twin = Math.max(0, counts.twin - 2);
+      warnings.push("Близнецы убраны: состав не помещается в город (близнецы ходят только парой).");
+    } else {
+      counts[roleId] -= 1;
+      warnings.push(`${ROLES[roleId].name} ×1 убран: состав не помещается в ${n} игроков.`);
+    }
   }
   while (usedCount() > n && counts.sheriff > 0) {
     counts.sheriff -= 1;
@@ -553,6 +559,13 @@ export function computeRoleSetup(playerCount, options = {}, mode = "classic") {
       counts[roleId] -= 1;
       warnings.push(`${ROLES[roleId].name} ×1 убран: состав не помещается в город.`);
     }
+  }
+
+  // Hard invariant: twins are always a pair. Any leftover single twin is
+  // dropped before seats are finalised, so the counts stay consistent.
+  if (counts.twin > 0 && counts.twin !== 2) {
+    counts.twin = 0;
+    warnings.push("Близнецы не в паре и убраны из состава.");
   }
 
   const remaining = Math.max(0, n - usedCount());

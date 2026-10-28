@@ -14,7 +14,7 @@ import {
 import { createChat } from "../ui/chat.js";
 import { openModal, closeModal, confirmModal } from "../ui/modal.js";
 import { ROLES, TEAMS } from "../data/roles.js";
-import { formatClock, formatShortTime, playersLabel, pluralRu } from "../core/format.js";
+import { dayLabel, formatClock, formatShortTime, playersLabel, pluralRu } from "../core/format.js";
 import { asset } from "../core/assets.js";
 
 
@@ -77,7 +77,7 @@ function actionConfig(view, mode) {
   if (!view) return null;
   const self = view.self ?? {};
   if (DAY_PHASES.has(view.phase) && !view.spectator && self.alive) {
-    if (mode === "reveal" && view.day?.spy?.available) {
+    if (mode === "reveal" && view.dayActions?.spy?.available) {
       return {
         kind: "day",
         action: "reveal",
@@ -88,7 +88,7 @@ function actionConfig(view, mode) {
         queued: null,
       };
     }
-    if (mode === "judge" && view.day?.judge?.available) {
+    if (mode === "judge" && view.dayActions?.judge?.available) {
       return {
         kind: "day",
         action: "judge",
@@ -99,7 +99,7 @@ function actionConfig(view, mode) {
         queued: null,
       };
     }
-    if (mode === "cure" && view.day?.cure?.available) {
+    if (mode === "cure" && view.dayActions?.cure?.available) {
       return {
         kind: "day",
         action: "cure",
@@ -113,7 +113,7 @@ function actionConfig(view, mode) {
   }
   if (view.phase === "voting") {
     if (view.spectator || !self.alive) return null;
-    if (view.day?.blocked) return null;
+    if (view.dayActions?.blocked) return null;
     return {
       kind: "vote",
       action: "vote",
@@ -542,7 +542,7 @@ export function createGameScreen(ctx, initialView) {
   }
 
   function dayActionButtons() {
-    const day = view?.day;
+    const day = view?.dayActions;
     if (!day || !view?.self?.alive) return "";
     const items = [];
     if (day.spy?.available) {
@@ -609,7 +609,7 @@ export function createGameScreen(ctx, initialView) {
     if (view.phase === "voting") {
       const myVote = view.votes?.myVote;
       const votedName = myVote && myVote !== "skip" ? targetName(view, myVote) : null;
-      const blocked = Boolean(view.day?.blocked);
+      const blocked = Boolean(view.dayActions?.blocked);
       const drunk = Boolean(self.drunk);
       const cannotVote = blocked || drunk;
       mountStable(
@@ -729,7 +729,7 @@ export function createGameScreen(ctx, initialView) {
       return;
     }
 
-    const dayBlocked = Boolean(view.day?.blocked);
+    const dayBlocked = Boolean(view.dayActions?.blocked);
     const drunk = Boolean(self.drunk);
     mountStable(
       node,
@@ -809,7 +809,7 @@ export function createGameScreen(ctx, initialView) {
             ? html`<span class="${self.judgeUsed ? "muted" : "gold"}">${icon("gavel", { size: 13 })} приговор ${self.judgeUsed ? "вынесен" : "готов"}</span>`
             : ""}
           ${self.roleId === "spy"
-            ? html`<span>${icon("eye", { size: 13 })} днём ${view.day?.spy?.usedToday ? "роль уже узнана" : "можно узнать роль"}</span>`
+            ? html`<span>${icon("eye", { size: 13 })} днём ${view.dayActions?.spy?.usedToday ? "роль уже узнана" : "можно узнать роль"}</span>`
             : ""}
           ${self.roleId === "puppeteer"
             ? html`<span>${icon("key", { size: 13 })} марионетка ${self.puppetTargetName ? `— ${self.puppetTargetName}` : "не выбрана"}</span>`
@@ -938,7 +938,7 @@ export function createGameScreen(ctx, initialView) {
     const tone = resultTone(nextView);
     const handle = openModal({
       title,
-      subtitle: `${winner.subtitle} · ${playersLabel((nextView.players ?? []).length)} · ${nextView.day} ${pluralRu(nextView.day, ["день", "дня", "дней"])}`,
+      subtitle: `${winner.subtitle} · ${playersLabel((nextView.players ?? []).length)} · ${dayLabel(nextView.day)}`,
       wide: true,
       className: `modal--end modal--end-${winner.team}`,
       body: html`<div class="end-modal">
@@ -1065,9 +1065,9 @@ export function createGameScreen(ctx, initialView) {
     if (previous && previous.phaseSerial !== view.phaseSerial) {
       selected = null;
       if (mode === "contract" && !view.night?.contract?.available) mode = null;
-      if (mode === "reveal" && !view.day?.spy?.available) mode = null;
-      if (mode === "judge" && !view.day?.judge?.available) mode = null;
-      if (mode === "cure" && !view.day?.cure?.available) mode = null;
+      if (mode === "reveal" && !view.dayActions?.spy?.available) mode = null;
+      if (mode === "judge" && !view.dayActions?.judge?.available) mode = null;
+      if (mode === "cure" && !view.dayActions?.cure?.available) mode = null;
       if (mode === "drink" || mode === "block" || mode === "puppet") mode = null;
       playersSignature = "";
     }
@@ -1187,8 +1187,8 @@ export function createGameScreen(ctx, initialView) {
         if (modeButton) {
           const nextMode = modeButton.dataset.gameMode;
           if (nextMode === "contract" && !view?.night?.contract?.available) return;
-          if (nextMode === "reveal" && !view?.day?.spy?.available) return;
-          if (nextMode === "judge" && !view?.day?.judge?.available) return;
+          if (nextMode === "reveal" && !view?.dayActions?.spy?.available) return;
+          if (nextMode === "judge" && !view?.dayActions?.judge?.available) return;
           mode = nextMode === "kill" || nextMode === "vote" ? null : nextMode;
           selected = null;
           app.playSfx("select");

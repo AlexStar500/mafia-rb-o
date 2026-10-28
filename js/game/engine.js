@@ -1711,7 +1711,7 @@ export class GameEngine {
     }
 
     const canDayAction = DAY_ACTION_PHASES.has(this.phase) && Boolean(viewer?.alive);
-    const dayView = viewer
+    const dayActions = viewer
       ? {
           canAct: canDayAction && viewer.blockedDay !== this.day,
           blocked: viewer.blockedDay === this.day,
@@ -1881,7 +1881,9 @@ export class GameEngine {
         bots: this.players.filter((player) => player.isBot).length,
       },
       night,
-      day: dayView,
+      // Day-scoped action availability. Kept apart from `day` (the number)
+      // so labels like "Day 3" never stringify an object.
+      dayActions,
       votes: {
         myVote: viewer ? this.votes.get(viewer.id) ?? null : null,
         votedIds: [...this.votes.keys()],
