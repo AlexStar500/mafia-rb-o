@@ -12,11 +12,11 @@ const SCENES = Object.freeze({
   menu: "night",
   lobby: "night",
   night: "night",
-  dawn: "day",
-  discussion: "day",
-  voting: "day",
-  verdict: "day",
-  lastWords: "day",
+  dawn: "dayLoop",
+  discussion: "dayLoop",
+  voting: "dayLoop",
+  verdict: "dayLoop",
+  lastWords: "dayLoop",
   ended: "night",
   silent: null,
 });
@@ -63,15 +63,32 @@ export class AudioManager {
     if (this._built) return;
     this._built = true;
     const ext = this._installPath;
-    for (const name of ["day", "night"]) {
+    for (const name of ["night", "dayLoop"]) {
       const audio = new Audio(asset(`assets/audio/${name}.${ext}`));
-      // Night is an ambient bed. Day is a one-shot sting: play it once when
-      // the city wakes, never loop it under the discussion.
-      audio.loop = name === "night";
+      // Both beds loop. The day bed is the full track; the short `day` sting
+      // below marks the exact moment the city wakes up.
+      audio.loop = true;
       audio.preload = "auto";
       audio.volume = 0;
       audio.setAttribute("playsinline", "");
       this.tracks.set(name, audio);
+    }
+    // One-shot dawn sting, never looped under the discussion.
+    this.sting = new Audio(asset(`assets/audio/day.${ext}`));
+    this.sting.loop = false;
+    this.sting.preload = "auto";
+    this.sting.volume = 0;
+    this.sting.setAttribute("playsinline", "");
+  }
+
+  _playSting() {
+    if (!this.sting || this._hidden || this.settings.muted) return;
+    try {
+      this.sting.currentTime = 0;
+      this.sting.volume = Math.min(1, this._musicVolume() + 0.08);
+      this.sting.play().catch(() => {});
+    } catch {
+      // Ignored: the sting is decoration.
     }
   }
 
@@ -130,6 +147,7 @@ export class AudioManager {
     this._buildTracks();
     const wanted = SCENES[scene] ?? null;
     const trackChanged = wanted !== this._activeTrackName;
+    if (trackChanged && scene === "dawn") this._playSting();
     for (const [name, audio] of this.tracks) {
       const isWanted = name === wanted;
       if (isWanted && trackChanged) {
@@ -185,6 +203,7 @@ export class AudioManager {
     for (const audio of this.tracks.values()) {
       if (this._hidden) audio.pause();
     }
+    if (this._hidden) this.sting?.pause();
     if (!this._hidden) this.setScene(this.scene, { force: true });
   }
 

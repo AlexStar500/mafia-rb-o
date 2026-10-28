@@ -2,7 +2,7 @@ import { html, mount, qs, qsa } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { roleArt, roleChip, showRoleModal } from "../ui/components.js";
 import { BOT_ROSTER } from "../data/bots.js";
-import { ROLES, ROLE_ORDER, TEAMS, computeRoleSetup } from "../data/roles.js";
+import { ROLES, ROLE_ORDER, TEAMS, ROLE_LIMITS, computeRoleSetup } from "../data/roles.js";
 import { asset } from "../core/assets.js";
 
 const TEAM_COPY = Object.freeze({
@@ -54,22 +54,37 @@ function setupPreview(playerCount, roles) {
           ${setup.warnings.map((warning) => html`<span>${icon("alert", { size: 13 })} ${warning}</span>`)}
         </div>`
       : html`<p class="balance-result__ok">${icon("check", { size: 14 })} Состав сбалансирован. Роли раздаются случайно.</p>`}
-    <p class="balance-result__note">Автобаланс: мафия ≈ четверть города, шериф всегда один, доктор с 5 игроков, ассасин с 8, шут с 7.</p>
+    <p class="balance-result__note">Автобаланс: мафия ≈ четверть города, шериф всегда один, остальные роли — столько, сколько вы поставили. Близнецы всегда парой.</p>
+  </div>`;
+}
+
+const BALANCE_ROLES = Object.freeze(["assassin", "bartender", "spy", "doctor", "musician", "judge", "jester", "puppeteer"]);
+
+function balanceRoleControl(roleId, roles) {
+  const role = ROLES[roleId];
+  const count = roles[roleId] ?? 0;
+  return html`<div class="balance-role-control" style="--role-color:${role.color}">
+    <span class="balance-role-control__name"><img src="${asset(role.icon)}" alt="" width="20" height="20" loading="lazy" />${role.name}</span>
+    <div class="stepper stepper--xs" role="group" aria-label="${role.name}">
+      <button type="button" data-balance-role-step="${roleId}" data-delta="-1" aria-label="Меньше" ${count <= 0 ? html`disabled` : ""}>${icon("minus", { size: 13 })}</button>
+      <output data-balance-role-out="${roleId}">${count}</output>
+      <button type="button" data-balance-role-step="${roleId}" data-delta="1" aria-label="Больше" ${count >= 6 ? html`disabled` : ""}>${icon("plus", { size: 13 })}</button>
+    </div>
   </div>`;
 }
 
 export function createRolesScreen(ctx) {
   const app = ctx.app;
   const settings = app.settings;
-  let players = Math.max(4, Math.min(20, Number(settings.lastPlayerCount) || 8));
-  let roles = { doctor: true, assassin: false, jester: false };
+  let players = Math.max(ROLE_LIMITS.minPlayers, Math.min(ROLE_LIMITS.maxPlayers, Number(settings.lastPlayerCount) || 8));
+  let roles = { assassin: 0, bartender: 0, spy: 0, doctor: 1, musician: 0, judge: 0, puppeteer: 0, jester: 0, twin: 0 };
 
   const htmlScreen = html`<div class="screen">
     <div class="page roles-page">
       <header class="page-head roles-head">
         <span class="eyebrow">${icon("mask", { size: 13 })} Кодекс ночного города</span>
-        <h1 class="page-title">Шесть ролей. Одна правда.</h1>
-        <p class="page-sub">Кто-то убивает, кто-то лечит, кто-то ищет, а кто-то просто очень хочет, чтобы его повесили. Изучите роли и соберите сбалансированный город.</p>
+        <h1 class="page-title">${ROLE_ORDER.length} ролей. Одна правда.</h1>
+        <p class="page-sub">Кто-то убивает, кто-то лечит, кто-то ищет, а кто-то просто очень хочет, чтобы его повесили. Изучите роли и соберите город под свой вкус.</p>
       </header>
 
       <section class="panel panel--gold balance-panel">
@@ -84,16 +99,17 @@ export function createRolesScreen(ctx) {
               <div class="stepper" role="group" aria-label="Количество игроков">
                 <button type="button" data-balance-step="-1" aria-label="Меньше" ${players <= 4 ? html`disabled` : ""}>${icon("minus", { size: 15 })}</button>
                 <output data-balance-count>${players}</output>
-                <button type="button" data-balance-step="1" aria-label="Больше" ${players >= 20 ? html`disabled` : ""}>${icon("plus", { size: 15 })}</button>
+                <button type="button" data-balance-step="1" aria-label="Больше" ${players >= ROLE_LIMITS.maxPlayers ? html`disabled` : ""}>${icon("plus", { size: 15 })}</button>
               </div>
             </div>
+            <div class="balance-roles">
+              ${BALANCE_ROLES.map((roleId) => balanceRoleControl(roleId, roles))}
+            </div>
             <div class="balance-toggles">
-              ${["doctor", "assassin", "jester"].map(
-                (roleId) => html`<label class="chip balance-chip ${roles[roleId] ? "is-active" : ""}" for="balance-${roleId}" style="--role-color:${ROLES[roleId].color}">
-                  <input id="balance-${roleId}" type="checkbox" data-balance-role="${roleId}" ${roles[roleId] ? html`checked` : ""} />
-                  ${ROLES[roleId].name}
-                </label>`,
-              )}
+              <label class="chip balance-chip ${roles.twin ? "is-active" : ""}" for="balance-twin" style="--role-color:${ROLES.twin.color}">
+                <input id="balance-twin" type="checkbox" data-balance-twin ${roles.twin ? html`checked` : ""} />
+                ${ROLES.twin.name} · пара
+              </label>
             </div>
           </div>
           <div data-balance-slot>${setupPreview(players, roles)}</div>
@@ -155,13 +171,22 @@ export function createRolesScreen(ctx) {
         qs("[data-balance-count]", root).textContent = String(players);
         for (const button of qsa("[data-balance-step]", root)) {
           const next = players + Number(button.dataset.balanceStep);
-          button.disabled = next < 4 || next > 20;
+          button.disabled = next < ROLE_LIMITS.minPlayers || next > ROLE_LIMITS.maxPlayers;
         }
-        for (const input of qsa("[data-balance-role]", root)) {
-          input.checked = Boolean(roles[input.dataset.balanceRole]);
-          input.closest(".balance-chip")?.classList.toggle("is-active", input.checked);
+        for (const roleId of BALANCE_ROLES) {
+          const count = roles[roleId] ?? 0;
+          const output = qs(`[data-balance-role-out="${roleId}"]`, root);
+          if (output) output.textContent = String(count);
+          for (const button of qsa(`[data-balance-role-step="${roleId}"]`, root)) {
+            const next = count + Number(button.dataset.delta);
+            button.disabled = next < 0 || next > 6;
+          }
         }
-        qs("[data-balance-count]", root)?.scrollIntoView?.({ block: "nearest" });
+        const twinInput = qs("[data-balance-twin]", root);
+        if (twinInput) {
+          twinInput.checked = roles.twin > 0;
+          twinInput.closest(".balance-chip")?.classList.toggle("is-active", twinInput.checked);
+        }
       };
 
       root.addEventListener("click", (event) => {
@@ -169,7 +194,15 @@ export function createRolesScreen(ctx) {
         if (!target) return;
         const step = target.closest("[data-balance-step]");
         if (step) {
-          players = Math.max(4, Math.min(20, players + Number(step.dataset.balanceStep)));
+          players = Math.max(ROLE_LIMITS.minPlayers, Math.min(ROLE_LIMITS.maxPlayers, players + Number(step.dataset.balanceStep)));
+          rerender();
+          return;
+        }
+        const roleStep = target.closest("[data-balance-role-step]");
+        if (roleStep) {
+          const roleId = roleStep.dataset.balanceRoleStep;
+          const next = Math.max(0, Math.min(6, (roles[roleId] ?? 0) + Number(roleStep.dataset.delta)));
+          roles = { ...roles, [roleId]: next };
           rerender();
           return;
         }
@@ -210,10 +243,11 @@ export function createRolesScreen(ctx) {
       root.addEventListener("change", (event) => {
         const input = event.target;
         if (!(input instanceof HTMLInputElement)) return;
-        const roleId = input.dataset.balanceRole;
-        if (!roleId) return;
-        roles = { ...roles, [roleId]: input.checked };
-        rerender();
+        if (input.dataset.balanceTwin !== undefined) {
+          roles = { ...roles, twin: input.checked ? 2 : 0 };
+          rerender();
+          return;
+        }
       });
     },
     destroy() {},

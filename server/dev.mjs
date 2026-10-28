@@ -235,7 +235,7 @@ server.listen(PORT, HOST, () => {
   console.log(`  Relay:    ws://${shown}:${PORT}/ws`);
   console.log(`  Комнаты:  http://${shown}:${PORT}/rooms`);
   for (const ip of lan) console.log(`  По IP:    http://${ip}:${PORT}/`);
-  if (lan.length) console.log(`  Друзья:   заходят по этому адресу — как в CS2`);
+  if (lan.length) console.log(`  Друзья:   заходят по этому адресу с кодом комнаты`);
   console.log(`  Извне:    пробросьте порт ${PORT} на роутере или поднимите Cloudflare Tunnel\n`);
   console.log(`  Стоп:     Ctrl+C\n`);
 });

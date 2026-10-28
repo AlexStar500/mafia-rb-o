@@ -1,16 +1,16 @@
 import { html, qs, qsa } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
-import { computeRoleSetup, BOT_CHAT_LEVELS, ROLES } from "../data/roles.js";
+import { computeRoleSetup, BOT_CHAT_LEVELS, ROLES, ROLE_LIMITS } from "../data/roles.js";
 
 function setupLine(count) {
-  const setup = computeRoleSetup(count, { doctor: true, assassin: false, jester: false });
+  const setup = computeRoleSetup(count, { doctor: 1, assassin: 0, jester: 0 });
   return `Мафия ${setup.counts.mafia} · шериф 1 · доктор ${setup.counts.doctor} · мирные ${setup.counts.civilian}`;
 }
 
 export function createQuickScreen(ctx) {
   const app = ctx.app;
   const settings = app.settings;
-  let players = Math.max(4, Math.min(20, Number(settings.lastPlayerCount) || 8));
+  let players = Math.max(ROLE_LIMITS.minPlayers, Math.min(ROLE_LIMITS.maxPlayers, Number(settings.lastPlayerCount) || 8));
   let botChat = BOT_CHAT_LEVELS[settings.botChat] ? settings.botChat : "normal";
 
   const htmlScreen = html`<div class="screen">
@@ -39,7 +39,7 @@ export function createQuickScreen(ctx) {
             <div class="stepper" role="group" aria-label="Количество игроков">
               <button type="button" data-quick-step="-1" aria-label="Меньше" ${players <= 4 ? html`disabled` : ""}>${icon("minus", { size: 15 })}</button>
               <output data-quick-count>${players}</output>
-              <button type="button" data-quick-step="1" aria-label="Больше" ${players >= 20 ? html`disabled` : ""}>${icon("plus", { size: 15 })}</button>
+              <button type="button" data-quick-step="1" aria-label="Больше" ${players >= ROLE_LIMITS.maxPlayers ? html`disabled` : ""}>${icon("plus", { size: 15 })}</button>
             </div>
           </div>
           <div class="quick-chat-level">
@@ -84,7 +84,7 @@ export function createQuickScreen(ctx) {
           <p class="quick-card__text">
             Найдём открытую комнату${settings.relayUrl ? " в сети или в этом браузере" : " в этом браузере"}. Если никого нет — запустим тренировку.
           </p>
-          <span class="quick-card__link">${settings.relayUrl ? `${icon("wifi", { size: 15 })} Relay настроен` : `${icon("monitor", { size: 15 })} Режим портов`}</span>
+          <span class="quick-card__link">${settings.relayUrl ? html`${icon("wifi", { size: 15 })} Relay настроен` : html`${icon("monitor", { size: 15 })} Режим портов`}</span>
         </button>
       </div>
 
@@ -108,7 +108,7 @@ export function createQuickScreen(ctx) {
         const buttons = qsa("[data-quick-step]", root);
         for (const button of buttons) {
           const next = players + Number(button.dataset.quickStep);
-          button.disabled = next < 4 || next > 20;
+          button.disabled = next < ROLE_LIMITS.minPlayers || next > ROLE_LIMITS.maxPlayers;
         }
       };
       root.addEventListener("click", (event) => {
@@ -116,7 +116,7 @@ export function createQuickScreen(ctx) {
         if (!target) return;
         const step = target.closest("[data-quick-step]");
         if (step) {
-          players = Math.max(4, Math.min(20, players + Number(step.dataset.quickStep)));
+          players = Math.max(ROLE_LIMITS.minPlayers, Math.min(ROLE_LIMITS.maxPlayers, players + Number(step.dataset.quickStep)));
           sync();
           return;
         }

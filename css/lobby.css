@@ -982,6 +982,17 @@
   gap: var(--space-2);
 }
 
+.setting-row--role {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.setting-row--role .stepper {
+  flex: none;
+}
+
 .setting-row__text {
   display: flex;
   flex-direction: column;
@@ -1045,6 +1056,14 @@
 .form-section__title svg {
   color: var(--gold);
   opacity: 0.85;
+}
+
+.form-section__note {
+  margin: -4px 0 0;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 46ch;
 }
 
 .room-form {

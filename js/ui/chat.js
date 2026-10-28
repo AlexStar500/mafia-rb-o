@@ -3,8 +3,10 @@ import { icon } from "./icons.js";
 import { toast } from "./toast.js";
 import { openModal, closeModal } from "./modal.js";
 import { avatar } from "./components.js";
+import { ROLE_ORDER, ROLES } from "../data/roles.js";
 import { QUICK_CATEGORIES, QUICK_BY_CAT, quickPreview } from "../data/quickChat.js";
 import { formatShortTime } from "../core/format.js";
+import { asset } from "../core/assets.js";
 
 const CHANNEL_META = Object.freeze({
   public: { name: "Общий", icon: "chat" },
@@ -427,7 +429,7 @@ export class ChatUI {
     });
   }
 
-  sendQuick(phrase, targetId = null) {
+  sendQuick(phrase, targetId = null, quickRoleId = null) {
     if (!this.writeChannels.includes(this.channel)) {
       toast("Сейчас этот канал только для чтения.", { tone: "warn" });
       return false;
@@ -435,6 +437,7 @@ export class ChatUI {
     const result = this.onSend?.({
       quickId: phrase.id,
       targetId,
+      quickRoleId,
       channel: this.channel === "all" ? "public" : this.channel,
     });
     if (result && result.ok === false) {
@@ -453,10 +456,10 @@ export class ChatUI {
     }
     const targetsForChannel = () =>
       (this.getTargets?.(this.channel) ?? []).filter((player) => player && player.id && player.id !== this.selfId);
-    let category = QUICK_CATEGORIES[0]?.id ?? "accuse";
-    let pending = null;
+    const categories = QUICK_CATEGORIES.filter((cat) => cat.id !== "dead" || this.channel === "dead");
+    const category = this.channel === "dead" ? "dead" : categories[0]?.id ?? "quick";
 
-    const state = { category, pending, targets: targetsForChannel() };
+    const state = { category, pending: null, targets: targetsForChannel(), targetId: null };
 
     const handle = openModal({
       title: "Быстрая фраза",
@@ -474,12 +477,35 @@ export class ChatUI {
     const cats = qs("[data-quick-cats]", root);
     const panel = qs("[data-quick-panel]", root);
 
-    const send = (phrase, targetId = null) => {
-      if (this.sendQuick(phrase, targetId)) closeModal("sent");
+    const send = (phrase, targetId = null, quickRoleId = null) => {
+      if (this.sendQuick(phrase, targetId, quickRoleId)) closeModal("sent");
+    };
+
+    const renderRoles = (phrase) => {
+      const roles = ROLE_ORDER.map((id) => ROLES[id]).filter(Boolean);
+      mount(
+        panel,
+        html`<div class="quick-target">
+          <button class="btn btn--quiet btn--sm" type="button" data-quick-back>
+            ${icon("back", { size: 15 })} Назад
+          </button>
+          <p class="quick-target__phrase">«${quickPreview(phrase)}»</p>
+          <p class="quick-target__hint">Какую роль вы имеете в виду? Выберите одну — город услышит ровно её.</p>
+          <div class="quick-target__grid">
+            ${roles.map(
+              (role) => html`<button class="quick-target__person" type="button" data-quick-role="${role.id}">
+                <img src="${asset(role.icon)}" alt="" width="32" height="32" loading="lazy" />
+                <span>${role.name}</span>
+              </button>`,
+            )}
+          </div>
+        </div>`,
+      );
     };
 
     const renderTargets = (phrase) => {
       state.pending = phrase;
+      state.targetId = null;
       state.targets = targetsForChannel();
       mount(
         panel,
@@ -508,7 +534,7 @@ export class ChatUI {
         renderTargets(state.pending);
         return;
       }
-      mount(cats, html`${QUICK_CATEGORIES.map(
+      mount(cats, html`${categories.map(
         (cat) => html`<button
           class="quick-chat__cat ${cat.id === state.category ? "is-active" : ""}"
           type="button"
@@ -527,6 +553,7 @@ export class ChatUI {
             (phrase) => html`<button class="quick-chat__phrase" type="button" data-quick-phrase="${phrase.id}">
               <span>${quickPreview(phrase)}</span>
               ${phrase.needsTarget ? html`<span class="quick-chat__target-icon">${icon("target", { size: 13 })}</span>` : ""}
+              ${phrase.needsRole ? html`<span class="quick-chat__target-icon">${icon("mask", { size: 13 })}</span>` : ""}
             </button>`,
           )}
         </div>`,
@@ -540,12 +567,14 @@ export class ChatUI {
       if (cat) {
         state.category = cat.dataset.quickCat;
         state.pending = null;
+        state.targetId = null;
         renderPanel();
         return;
       }
       const back = target.closest("[data-quick-back]");
       if (back) {
         state.pending = null;
+        state.targetId = null;
         renderPanel();
         return;
       }
@@ -555,6 +584,9 @@ export class ChatUI {
         if (!phrase) return;
         if (phrase.needsTarget) {
           renderTargets(phrase);
+        } else if (phrase.needsRole) {
+          state.pending = phrase;
+          renderRoles(phrase);
         } else {
           send(phrase, null);
         }
@@ -562,7 +594,17 @@ export class ChatUI {
       }
       const person = target.closest("[data-quick-target]");
       if (person && state.pending) {
-        send(state.pending, person.dataset.quickTarget);
+        state.targetId = person.dataset.quickTarget;
+        if (state.pending.needsRole) {
+          renderRoles(state.pending);
+        } else {
+          send(state.pending, state.targetId);
+        }
+        return;
+      }
+      const roleButton = target.closest("[data-quick-role]");
+      if (roleButton && state.pending) {
+        send(state.pending, state.targetId, roleButton.dataset.quickRole);
       }
     });
 

@@ -699,6 +699,29 @@ input[type="range"]::-moz-range-thumb {
   font-size: var(--fs-md);
 }
 
+.stepper--xs {
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.stepper--xs button {
+  width: 26px;
+  height: 26px;
+}
+
+.stepper--xs output,
+.stepper--xs input {
+  width: 2.4ch;
+  font-size: var(--fs-sm);
+}
+
+.stepper button:disabled,
+.stepper--xs button:disabled {
+  opacity: 0.32;
+  pointer-events: none;
+}
+
 /* Avatars ----------------------------------------------------------------*/
 .avatar {
   --avatar-size: 48px;

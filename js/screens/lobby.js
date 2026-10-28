@@ -194,7 +194,7 @@ export function createLobbyScreen(ctx, initialView) {
       ${session.mode === "local"
         ? html`<div class="notice lobby-local-note">${icon("info", { size: 16 })}<span>Порты живут в этом браузере. Откройте ссылку/код в другой вкладке — и город соберётся. Для других устройств выберите «По IP» или «Онлайн».</span></div>`
         : session.mode === "lan"
-          ? html`<div class="notice lobby-local-note">${icon("monitor", { size: 16 })}<span>По IP: друзья открывают эту ссылку на адрес хоста — как в CS2. Для подключения из других городов включите проброс порта или Cloudflare Tunnel.</span></div>`
+          ? html`<div class="notice lobby-local-note">${icon("monitor", { size: 16 })}<span>По IP: друзья открывают ссылку с адресом компьютера-хоста. Для подключения из другой сети включите проброс порта или Cloudflare Tunnel.</span></div>`
           : html`<div class="notice lobby-local-note">${icon("wifi", { size: 16 })}<span>Онлайн-комната: отправьте ссылку друзьям. Relay передаёт только игровые сообщения, не роли.</span></div>`}`,
     );
   };

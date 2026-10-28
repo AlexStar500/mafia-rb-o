@@ -1,7 +1,7 @@
 import { html, qs, qsa } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
-import { normalizeRelayEndpoint } from "../net/protocol.js";
-import { probeSameOriginRelay } from "../net/auto.js";
+import { normalizeRelayUrl } from "../core/security.js";
+import { probeSameOriginRelay, resolveRelayForMode } from "../net/auto.js";
 import { isValidRoomCode, normalizeRoomCode } from "../core/security.js";
 import { loadRoomRegistry } from "../core/storage.js";
 
@@ -10,7 +10,7 @@ export function createJoinScreen(ctx) {
   const settings = app.settings;
   const query = ctx.route?.query ?? {};
   const invitedCode = normalizeRoomCode(query.code ?? query.room ?? "");
-  const invitedRelay = normalizeRelayEndpoint(query.relay ?? "");
+  const invitedRelay = normalizeRelayUrl(query.relay ?? "");
   let mode = invitedRelay
     ? "online"
     : ["local", "lan", "online"].includes(query.mode)
@@ -64,7 +64,7 @@ export function createJoinScreen(ctx) {
                 </button>
                 <button class="mode-option ${mode === "lan" ? "is-active" : ""}" type="button" data-join-mode="lan" role="radio" aria-checked="${mode === "lan" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 18 })}</span>
-                  <span><b>По IP</b><span>Адрес хоста, как в CS2</span></span>
+                  <span><b>По IP</b><span>Адрес компьютера-хоста</span></span>
                 </button>
                 <button class="mode-option ${mode === "online" ? "is-active" : ""}" type="button" data-join-mode="online" role="radio" aria-checked="${mode === "online" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("wifi", { size: 18 })}</span>
@@ -82,7 +82,7 @@ export function createJoinScreen(ctx) {
                   type="text"
                   data-join-relay
                   value="${invitedRelay || settings.relayUrl}"
-                  placeholder="wss://your-relay.example/ws"
+                  placeholder="https://mafiarbovercel.vercel.app или wss://relay.example/ws"
                   autocomplete="off"
                   spellcheck="false"
                 />
@@ -121,11 +121,11 @@ export function createJoinScreen(ctx) {
             <div class="panel__body join-help">
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("monitor", { size: 18 })}</span>
-                <div><b>Порты</b><p>Комната живёт во вкладках этого браузера. Сервер не нужен — сайт на GitHub Pages, работает сразу.</p></div>
+                <div><b>Порты</b><p>Комната живёт во вкладках этого браузера. Сервер не нужен — работает сразу.</p></div>
               </div>
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("monitor", { size: 18 })}</span>
-                <div><b>По IP</b><p>Как в CS2: хост запускает <span class="mono">npm start</span>, остальные заходят по его адресу с кодом комнаты. Из любого города — нужен проброс порта или Cloudflare Tunnel.</p></div>
+                <div><b>По IP</b><p>Хост запускает <span class="mono">npm start</span>, остальные заходят по его адресу с кодом комнаты. Из другой сети — нужен проброс порта или Cloudflare Tunnel.</p></div>
               </div>
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("wifi", { size: 18 })}</span>
@@ -234,14 +234,15 @@ export function createJoinScreen(ctx) {
         codeInput.removeAttribute("aria-invalid");
         let relayUrl = "";
         if (mode === "online") {
-          relayUrl = normalizeRelayEndpoint(relayInput.value);
-          if (relayUrl && typeof location !== "undefined" && location.protocol === "https:" && !relayUrl.startsWith("wss:")) {
-            error.textContent = "На HTTPS нужен wss:// relay.";
+          const rawRelay = relayInput.value.trim();
+          relayUrl = normalizeRelayUrl(rawRelay);
+          if (rawRelay && !relayUrl) {
+            error.textContent = "Укажите ws://, wss://, http:// или https:// адрес.";
             relayInput.setAttribute("aria-invalid", "true");
             relayInput.focus({ preventScroll: true });
             return;
           }
-          if (!relayUrl) relayUrl = await detectSameOrigin();
+          if (!relayUrl) relayUrl = await resolveRelayForMode("online", "");
           if (!relayUrl) {
             error.textContent = "Укажите корректный relay адрес.";
             relayInput.setAttribute("aria-invalid", "true");

@@ -453,6 +453,231 @@ def jester_icon() -> Canvas:
     return c
 
 
+def bartender_icon() -> Canvas:
+    c = Canvas(24, 8)
+    ink = c.add("08060A")
+    wood = c.add("2A1C16")
+    wood2 = c.add("4A3226")
+    amber = c.add("C98A2E")
+    amber2 = c.add("F0C46A")
+    glass = c.add("2E5A63")
+    glass2 = c.add("6FB3BE")
+    ivory = c.add("EAF7F4")
+    red = c.add("C93A48")
+    # bar counter
+    c.rect(1, 20, 22, 3, wood)
+    c.line(2, 20, 21, 20, wood2)
+    c.rect(2, 22, 20, 1, ink)
+    # bottle
+    c.rect(5, 8, 4, 11, ink)
+    c.rect(6, 10, 2, 9, amber)
+    c.line(6, 11, 6, 17, amber2)
+    c.rect(6, 8, 2, 3, glass)
+    c.rect(5, 6, 4, 2, ink)
+    c.px(6, 6, red)
+    c.px(7, 7, glass2)
+    # label
+    c.rect(6, 13, 2, 3, ivory)
+    c.px(7, 14, ink)
+    # shot glass
+    c.poly([(14, 12), (20, 12), (19, 19), (15, 19)], ink)
+    c.poly([(15, 13), (19, 13), (18.4, 18), (15.6, 18)], glass)
+    c.poly([(15, 14), (19, 14), (18.6, 16), (15.4, 16)], amber)
+    c.line(16, 15, 18, 15, amber2)
+    c.px(20, 13, glass2)
+    # a drop on the counter
+    c.px(12, 19, amber2)
+    c.outline(ink)
+    return c
+
+
+def spy_icon() -> Canvas:
+    c = Canvas(24, 8)
+    ink = c.add("06080D")
+    navy = c.add("141B2E")
+    navy2 = c.add("24314F")
+    steel = c.add("6D7C93")
+    steel2 = c.add("B9C6D6")
+    ivory = c.add("DCE7F5")
+    teal = c.add("7BE7FF")
+    red = c.add("E14C5A")
+    gold = c.add("C79A45")
+    # lens
+    c.ring(11.5, 11, 7.6, 7.6, 2.4, steel)
+    c.ellipse(11.5, 11, 5.6, 5.6, navy2)
+    c.ellipse(11.5, 11, 5.6, 5.6, navy)
+    # watchful eye inside
+    c.ellipse(11.5, 11, 4.2, 2.7, ivory)
+    c.ellipse(11.5, 11, 1.8, 1.8, teal)
+    c.px(11, 11, ink)
+    c.px(12, 11, ink)
+    c.px(10, 10, ivory)
+    # highlight on the rim
+    c.line(6, 6, 8, 4, steel2)
+    # handle
+    c.line(17, 16, 22, 21, steel, 2)
+    c.line(17, 17, 21, 21, gold)
+    c.px(22, 22, gold)
+    # tip of a red thread
+    c.px(3, 19, red)
+    c.px(4, 20, red)
+    c.outline(ink)
+    return c
+
+
+def judge_icon() -> Canvas:
+    c = Canvas(24, 8)
+    ink = c.add("0B0905")
+    gold = c.add("C89B3C")
+    gold2 = c.add("F0CC73")
+    gold3 = c.add("8F651B")
+    wood = c.add("4A2E18")
+    wood2 = c.add("7A4A25")
+    steel = c.add("6D7C93")
+    # sound block
+    c.rect(2, 19, 20, 4, ink)
+    c.rect(4, 20, 16, 2, wood)
+    c.line(5, 20, 18, 20, wood2)
+    c.rect(12, 17, 4, 3, wood)
+    # gavel head (tilted block)
+    c.poly([(3, 7), (10, 3), (15, 8), (8, 12)], ink)
+    c.poly([(4, 7), (10, 4), (14, 8), (8, 11)], gold)
+    c.poly([(5, 7), (10, 5), (13, 8), (8, 10)], gold2)
+    c.line(5, 7, 9, 5, gold3)
+    c.line(9, 10, 13, 8, gold3)
+    # grip
+    c.line(11, 10, 18, 17, wood, 2)
+    c.line(11, 11, 17, 17, wood2)
+    c.rect(17, 16, 3, 3, gold3)
+    c.px(18, 17, gold2)
+    # strike marks
+    c.px(2, 12, gold2)
+    c.px(1, 14, gold3)
+    c.outline(ink)
+    return c
+
+
+def musician_icon() -> Canvas:
+    c = Canvas(24, 8)
+    ink = c.add("0A0708")
+    wood = c.add("7A3B1E")
+    wood2 = c.add("B3612C")
+    wood3 = c.add("E8A45C")
+    ebony = c.add("1A1114")
+    ivory = c.add("EFE6D2")
+    gold = c.add("D9B36C")
+    gold2 = c.add("F6DB94")
+    # violin body silhouette
+    c.ellipse(10, 13, 6.6, 6.2, ink)
+    c.ellipse(11, 18.5, 7.4, 5.4, ink)
+    c.rect(4, 13, 14, 6, ink)
+    c.ellipse(10, 13, 5.6, 5.2, wood)
+    c.ellipse(11, 18.5, 6.4, 4.4, wood)
+    c.rect(5, 13, 12, 5, wood)
+    # waist highlights and rim
+    c.line(5, 15, 9, 16, wood2)
+    c.line(13, 16, 17, 15, wood2)
+    c.line(6, 20, 10, 20, wood3)
+    # neck + scroll
+    c.line(11, 9, 16, 3, ebony, 2)
+    c.rect(15, 1, 3, 3, ebony)
+    c.px(16, 1, gold)
+    c.px(17, 2, gold2)
+    # strings
+    c.line(11, 8, 9, 20, ivory)
+    c.line(12, 8, 11, 20, ivory)
+    # f-holes
+    c.line(7, 12, 7, 16, ink)
+    c.line(13, 12, 13, 16, ink)
+    # bridge + tailpiece
+    c.line(8, 17, 13, 17, gold)
+    c.rect(9, 18, 3, 2, ebony)
+    # bow
+    c.line(2, 21, 22, 9, wood2, 2)
+    c.line(2, 22, 22, 10, ivory)
+    c.px(21, 9, gold2)
+    c.outline(ink)
+    return c
+
+
+def puppeteer_icon() -> Canvas:
+    c = Canvas(24, 8)
+    ink = c.add("08060C")
+    purple = c.add("5B2A86")
+    purple2 = c.add("8040B8")
+    purple3 = c.add("B47BE0")
+    gold = c.add("D9B36C")
+    gold2 = c.add("F6DB94")
+    wood = c.add("4A3226")
+    wood2 = c.add("6E4A32")
+    ivory = c.add("F1EADB")
+    # control cross
+    c.rect(2, 2, 20, 2, ink)
+    c.rect(3, 2, 18, 1, wood)
+    c.line(4, 2, 20, 2, wood2)
+    c.rect(11, 1, 2, 5, ink)
+    c.rect(11, 1, 2, 4, wood)
+    # strings
+    c.line(5, 4, 8, 9, gold)
+    c.line(19, 4, 16, 9, gold)
+    c.line(11, 5, 12, 8, gold2)
+    # puppet head
+    c.ellipse(12, 10.5, 3.4, 3.0, ink)
+    c.ellipse(12, 10.5, 2.6, 2.3, ivory)
+    c.px(11, 10, ink)
+    c.px(13, 10, ink)
+    c.px(12, 12, purple)
+    # body
+    c.poly([(8, 14), (16, 14), (17, 21), (7, 21)], ink)
+    c.poly([(9, 15), (15, 15), (15.8, 20), (8.2, 20)], purple)
+    c.line(10, 16, 14, 16, purple3)
+    c.line(10, 18, 14, 18, purple2)
+    # arms
+    c.line(8, 13, 6, 17, gold)
+    c.line(16, 13, 18, 17, gold)
+    c.px(6, 18, purple3)
+    c.px(18, 18, purple3)
+    # legs
+    c.line(10, 21, 9, 23, gold)
+    c.line(14, 21, 15, 23, gold)
+    c.outline(ink)
+    return c
+
+
+def twin_icon() -> Canvas:
+    c = Canvas(24, 8)
+    ink = c.add("08060C")
+    purple = c.add("4B2270")
+    purple2 = c.add("7A3FB0")
+    purple3 = c.add("B47BE0")
+    lilac = c.add("D7B6F2")
+    gold = c.add("D9B36C")
+    gold2 = c.add("F6DB94")
+    ivory = c.add("F1EADB")
+    red = c.add("B62F46")
+    for cx, body, face in [(7.0, purple2, ivory), (17.0, purple, lilac)]:
+        # shoulders
+        c.poly([(cx - 5, 24), (cx - 4, 18), (cx - 1, 16), (cx + 1, 16), (cx + 4, 18), (cx + 5, 24)], ink)
+        c.poly([(cx - 4, 23), (cx - 3, 19), (cx - 1, 17.5), (cx + 1, 17.5), (cx + 3, 19), (cx + 4, 23)], body)
+        # head
+        c.ellipse(cx, 10.5, 4.6, 5.4, ink)
+        c.ellipse(cx, 10.5, 3.8, 4.6, face)
+        # hair / hood shadow
+        c.poly([(cx - 4, 8), (cx - 2, 5), (cx + 2, 5), (cx + 4, 8), (cx + 3, 6), (cx - 3, 6)], ink)
+        # eyes
+        c.px(int(cx) - 2, 11, ink)
+        c.px(int(cx) + 1, 11, ink)
+        c.line(int(cx) - 1, 14, int(cx) + 1, 14, ink)
+    # one shared crack: only one twin gets to win
+    c.line(12, 4, 12, 21, gold)
+    c.px(12, 4, gold2)
+    c.px(12, 21, gold2)
+    c.px(11, 7, red)
+    c.px(13, 17, red)
+    c.outline(ink)
+    return c
+
+
 def brand_icon() -> Canvas:
     c = Canvas(32, 16)
     ink = c.add("06070C")
@@ -674,7 +899,30 @@ def compile_roles() -> None:
         ("doctor", doctor_icon),
         ("assassin", assassin_icon),
         ("jester", jester_icon),
+        ("bartender", bartender_icon),
+        ("spy", spy_icon),
+        ("judge", judge_icon),
+        ("musician", musician_icon),
+        ("puppeteer", puppeteer_icon),
+        ("twin", twin_icon),
     ]:
+        canvas = fn()
+        canvas.save(OUT_ROLES / f"{name}.png", OUT_ASCL / f"role-{name}.asc")
+        print("role", name, "->", OUT_ROLES / f"{name}.png")
+
+
+NEW_ROLES = [
+    ("bartender", bartender_icon),
+    ("spy", spy_icon),
+    ("judge", judge_icon),
+    ("musician", musician_icon),
+    ("puppeteer", puppeteer_icon),
+    ("twin", twin_icon),
+]
+
+
+def compile_new_roles() -> None:
+    for name, fn in NEW_ROLES:
         canvas = fn()
         canvas.save(OUT_ROLES / f"{name}.png", OUT_ASCL / f"role-{name}.asc")
         print("role", name, "->", OUT_ROLES / f"{name}.png")
@@ -701,12 +949,17 @@ def compile_brand() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--preview", action="store_true", help="open generated images")
+    parser.add_argument("--new-roles", action="store_true", help="compile only the new role icons")
     args = parser.parse_args()
     if not ASCL.exists():
         raise SystemExit(f"ASCL compiler not found: {ASCL}")
     if not shutil.which("python"):
         raise SystemExit("python is not in PATH")
     OUT_ASCL.mkdir(parents=True, exist_ok=True)
+    if args.new_roles:
+        compile_new_roles()
+        print("done")
+        return
     compile_roles()
     compile_bots()
     compile_brand()

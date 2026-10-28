@@ -824,7 +824,7 @@ button.quick-card:hover {
 
 .balance-controls {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-4);
@@ -840,6 +840,46 @@ button.quick-card:hover {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.balance-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  flex: 1 1 360px;
+}
+
+.balance-role-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 4px 6px 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--role-color, var(--gold)) 18%, transparent);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.balance-role-control__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.balance-role-control__name img {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  flex: none;
 }
 
 .balance-chip {

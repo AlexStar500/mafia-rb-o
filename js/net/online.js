@@ -17,6 +17,9 @@ import {
   cleanRoomMeta,
   defaultRelayEndpoint,
   healthUrl,
+  httpHealthUrl,
+  httpRoomsUrl,
+  isHttpRelayUrl,
   isObject,
   normalizeRelayEndpoint,
   roomsUrl,
@@ -409,7 +412,7 @@ export class OnlineGuestAdapter extends ChannelAdapter {
 }
 
 export async function fetchOnlineRooms(relayUrl, { timeout = 4000 } = {}) {
-  const url = roomsUrl(relayUrl);
+  const url = isHttpRelayUrl(relayUrl) ? httpRoomsUrl(relayUrl) : roomsUrl(relayUrl);
   if (!url) throw new Error("Relay не настроен.");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -431,7 +434,7 @@ export async function fetchOnlineRooms(relayUrl, { timeout = 4000 } = {}) {
 }
 
 export async function checkRelay(relayUrl) {
-  const url = healthUrl(relayUrl);
+  const url = isHttpRelayUrl(relayUrl) ? httpHealthUrl(relayUrl) : healthUrl(relayUrl);
   if (!url) return { ok: false, error: "Relay не настроен." };
   const started = performance.now();
   const controller = new AbortController();

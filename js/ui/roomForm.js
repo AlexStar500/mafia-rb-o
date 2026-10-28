@@ -1,7 +1,16 @@
 import { html, mount, qs, qsa } from "./dom.js";
 import { icon } from "./icons.js";
 import { asset } from "../core/assets.js";
-import { computeRoleSetup, normalizeRoomConfig, ROLE_LIMITS, ROLES, BOT_CHAT_LEVELS } from "../data/roles.js";
+import {
+  BOT_CHAT_LEVELS,
+  MODE_ORDER,
+  ROLE_LIMITS,
+  ROLE_ORDER,
+  ROLES,
+  ROOM_MODES,
+  computeRoleSetup,
+  normalizeRoomConfig,
+} from "../data/roles.js";
 
 function switchRow({ id, field, title, hint, checked }) {
   return html`<label class="setting-row setting-row--switch" for="${id}">
@@ -48,16 +57,34 @@ function timerRow({ field, value, min, max, step, label, hint }) {
   </div>`;
 }
 
+function roleCountRow({ field, title, hint, value, min = 0, max, autoLabel = "" }) {
+  const shown = autoLabel && value === min ? autoLabel : value;
+  return html`<div class="setting-row setting-row--role">
+    <span class="setting-row__text">
+      <span class="setting-row__title">${title}</span>
+      <span class="setting-row__hint">${hint}</span>
+    </span>
+    <div class="stepper" role="group" aria-label="${title}">
+      <button type="button" data-step="${field}" data-delta="-1" aria-label="Меньше" ${value <= min ? html`disabled` : ""}>
+        ${icon("minus", { size: 15 })}
+      </button>
+      <output data-step-value="${field}">${shown}</output>
+      <button type="button" data-step="${field}" data-delta="1" aria-label="Больше" ${value >= max ? html`disabled` : ""}>
+        ${icon("plus", { size: 15 })}
+      </button>
+    </div>
+  </div>`;
+}
+
 function preview(value) {
-  const setup = computeRoleSetup(value.maxPlayers, value.roles);
-  const order = ["mafia", "assassin", "sheriff", "doctor", "civilian", "jester"];
+  const setup = computeRoleSetup(value.maxPlayers, value.roles, value.mode);
   return html`<div class="role-preview" data-role-preview>
     <div class="role-preview__head">
       <span class="setting-row__title">Состав при полном составе</span>
       <span class="badge badge--muted">${value.maxPlayers} игроков</span>
     </div>
     <div class="role-preview__grid">
-      ${order.map((roleId) => {
+      ${ROLE_ORDER.map((roleId) => {
         const count = setup.counts[roleId] ?? 0;
         const role = ROLES[roleId];
         return html`<span class="role-preview__item ${count ? "" : "is-off"}" style="--role-color:${role.color}" title="${role.name} × ${count}">
@@ -67,7 +94,7 @@ function preview(value) {
         </span>`;
       })}
     </div>
-    <p class="role-preview__note">Мафия: ${setup.mafiaTeam} · старт от ${value.minStart} игроков · шут максимум один.</p>
+    <p class="role-preview__note">Мафия: ${setup.mafiaTeam} · старт от ${value.minStart} игроков · близнецы всегда парой.</p>
     ${setup.warnings.map((warning) => html`<p class="role-preview__warning">${icon("alert", { size: 13 })} ${warning}</p>`)}
   </div>`;
 }
@@ -112,7 +139,7 @@ export class RoomForm {
             <div class="setting-row">
               <span class="setting-row__text">
                 <span class="setting-row__title">Максимум игроков</span>
-                <span class="setting-row__hint">До 20 участников</span>
+                <span class="setting-row__hint">До ${ROLE_LIMITS.maxPlayers} участников</span>
               </span>
               ${stepper({ field: "maxPlayers", value: value.maxPlayers, min: ROLE_LIMITS.minPlayers, max: ROLE_LIMITS.maxPlayers, label: "Максимум игроков" })}
             </div>
@@ -143,28 +170,116 @@ export class RoomForm {
         </div>
 
         <div class="form-section">
-          <span class="form-section__title">${icon("mask", { size: 15 })} Роли</span>
-          <div class="setting-list">
-            ${switchRow({
-              id: "role-doctor",
-              field: "roles.doctor",
-              title: "Доктор",
-              hint: "Лечит одного игрока за ночь. Доступен от 5 игроков.",
-              checked: value.roles.doctor,
+          <span class="form-section__title">${icon("spark", { size: 15 })} Режим</span>
+          <div class="mode-picker" role="group" aria-label="Режим игры">
+            ${MODE_ORDER.map((modeId) => {
+              const mode = ROOM_MODES[modeId];
+              return html`<button
+                class="mode-picker__option ${value.mode === modeId ? "is-active" : ""}"
+                type="button"
+                data-room-mode="${modeId}"
+                aria-pressed="${value.mode === modeId ? "true" : "false"}"
+              >
+                <strong>${mode.name}</strong>
+                <span>${mode.short}</span>
+              </button>`;
             })}
-            ${switchRow({
-              id: "role-assassin",
+          </div>
+          <p class="form-section__note" data-mode-note>${ROOM_MODES[value.mode]?.description ?? ""}</p>
+        </div>
+
+        <div class="form-section">
+          <span class="form-section__title">${icon("mask", { size: 15 })} Роли</span>
+          <p class="form-section__note">Каждую роль можно поставить несколько раз. «Авто» оставляет баланс за городом.</p>
+          <div class="setting-list">
+            ${roleCountRow({
+              field: "roles.mafia",
+              title: "Мафия",
+              hint: "Сколько всего мафиози. 0 — авто, с учётом особых ролей.",
+              value: value.roles.mafia,
+              min: 0,
+              max: ROLE_LIMITS.maxMafia,
+              autoLabel: "авто",
+            })}
+            ${roleCountRow({
+              field: "roles.sheriff",
+              title: "Шериф",
+              hint: "Сколько комиссаров в городе. Можно оставить 0.",
+              value: value.roles.sheriff,
+              min: 0,
+              max: ROLE_LIMITS.maxSheriff,
+            })}
+            ${roleCountRow({
+              field: "roles.civilian",
+              title: "Мирные",
+              hint: "Сколько обычных горожан. -1 — авто, 0 — ни одного.",
+              value: value.roles.civilian,
+              min: -1,
+              max: ROLE_LIMITS.maxCivilian,
+              autoLabel: "авто",
+            })}
+            ${roleCountRow({
               field: "roles.assassin",
               title: "Ассасин",
-              hint: "Мафия с одним контрактом сквозь лечение. От 8 игроков.",
-              checked: value.roles.assassin,
+              hint: "Мафия с одним контрактом сквозь лечение. Со 2-й ночи.",
+              value: value.roles.assassin,
+              max: ROLE_LIMITS.maxRoleCount,
             })}
-            ${switchRow({
-              id: "role-jester",
+            ${roleCountRow({
+              field: "roles.bartender",
+              title: "Бармен",
+              hint: "Мафия. Поит игрока, и его днём не разобрать.",
+              value: value.roles.bartender,
+              max: ROLE_LIMITS.maxRoleCount,
+            })}
+            ${roleCountRow({
+              field: "roles.spy",
+              title: "Шпион",
+              hint: "Мафия. Раз в день узнаёт точную роль игрока.",
+              value: value.roles.spy,
+              max: ROLE_LIMITS.maxRoleCount,
+            })}
+            ${roleCountRow({
+              field: "roles.doctor",
+              title: "Доктор",
+              hint: "Лечит одного игрока за ночь.",
+              value: value.roles.doctor,
+              max: ROLE_LIMITS.maxRoleCount,
+            })}
+            ${roleCountRow({
+              field: "roles.musician",
+              title: "Музыкант",
+              hint: "Блокирует ночные действия и дневной голос.",
+              value: value.roles.musician,
+              max: ROLE_LIMITS.maxRoleCount,
+            })}
+            ${roleCountRow({
+              field: "roles.judge",
+              title: "Судья",
+              hint: "Один раз за игру казнит днём. Ошибка стоит жизни.",
+              value: value.roles.judge,
+              max: ROLE_LIMITS.maxRoleCount,
+            })}
+            ${roleCountRow({
               field: "roles.jester",
               title: "Шут",
-              hint: "Побеждает, если его повесят. Один на игру, от 7 игроков.",
-              checked: value.roles.jester,
+              hint: "Побеждает, если его повесят голосованием.",
+              value: value.roles.jester,
+              max: ROLE_LIMITS.maxRoleCount,
+            })}
+            ${roleCountRow({
+              field: "roles.puppeteer",
+              title: "Кукловод",
+              hint: "Выбирает марионетку и побеждает вместе с ней.",
+              value: value.roles.puppeteer,
+              max: ROLE_LIMITS.maxRoleCount,
+            })}
+            ${switchRow({
+              id: "role-twin",
+              field: "roles.twin",
+              title: "Близнецы",
+              hint: "Всегда пара. Один переживший голосование другого побеждает.",
+              checked: value.roles.twin > 0,
             })}
           </div>
           <div class="role-preview-slot" data-preview-slot>${preview(value)}</div>
@@ -245,11 +360,31 @@ export class RoomForm {
     this.container.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target || this.disabled) return;
+      const modeButton = target.closest("[data-room-mode]");
+      if (modeButton) {
+        this.value.mode = modeButton.dataset.roomMode;
+        this._normalize();
+        this._sync();
+        this._notify();
+        return;
+      }
       const step = target.closest("[data-step]");
       if (step) {
         const field = step.dataset.step;
         const delta = Number(step.dataset.delta) || 0;
-        if (field === "maxPlayers") {
+        if (field.startsWith("roles.")) {
+          const roleId = field.slice(6);
+          const min = roleId === "civilian" ? -1 : 0;
+          const max = roleId === "mafia"
+            ? ROLE_LIMITS.maxMafia
+            : roleId === "sheriff"
+              ? ROLE_LIMITS.maxSheriff
+              : roleId === "civilian"
+                ? ROLE_LIMITS.maxCivilian
+                : ROLE_LIMITS.maxRoleCount;
+          const current = Number(this.value.roles[roleId]) || 0;
+          this.value.roles[roleId] = Math.max(min, Math.min(max, current + delta));
+        } else if (field === "maxPlayers") {
           this.value.maxPlayers = Math.max(ROLE_LIMITS.minPlayers, Math.min(ROLE_LIMITS.maxPlayers, this.value.maxPlayers + delta));
           if (this.value.minStart > this.value.maxPlayers) this.value.minStart = this.value.maxPlayers;
         } else if (field === "minStart") {
@@ -330,6 +465,37 @@ export class RoomForm {
       }
     }
 
+    for (const field of ["mafia", "sheriff", "civilian", "assassin", "bartender", "spy", "doctor", "musician", "judge", "jester", "puppeteer"]) {
+      const key = `roles.${field}`;
+      const current = Number(value.roles[field]) || 0;
+      const output = qs(`[data-step-value="${key}"]`, this.container);
+      if (output) {
+        const auto = (field === "mafia" && current === 0) || (field === "civilian" && current === -1);
+        output.textContent = auto ? "авто" : String(current);
+      }
+      for (const button of qsa(`[data-step="${key}"]`, this.container)) {
+        const delta = Number(button.dataset.delta);
+        const next = current + delta;
+        const min = field === "civilian" ? -1 : 0;
+        const max = field === "mafia"
+          ? ROLE_LIMITS.maxMafia
+          : field === "sheriff"
+            ? ROLE_LIMITS.maxSheriff
+            : field === "civilian"
+              ? ROLE_LIMITS.maxCivilian
+              : ROLE_LIMITS.maxRoleCount;
+        button.disabled = next < min || next > max;
+      }
+    }
+
+    for (const button of qsa("[data-room-mode]", this.container)) {
+      const active = button.dataset.roomMode === value.mode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+    const modeNote = qs("[data-mode-note]", this.container);
+    if (modeNote) modeNote.textContent = ROOM_MODES[value.mode]?.description ?? "";
+
     for (const input of qsa("[data-toggle]", this.container)) {
       const field = input.dataset.toggle;
       let checked = false;
@@ -362,7 +528,11 @@ export class RoomForm {
     this.container.classList.toggle("is-disabled", this.disabled);
     for (const control of qsa("input, button", this.container)) {
       if (control.dataset.step || control.dataset.botLevel || control.dataset.toggle || control.dataset.timer || control.dataset.text) {
-        control.disabled = this.disabled;
+        if (control.dataset.step) {
+          if (this.disabled) control.disabled = true;
+        } else {
+          control.disabled = this.disabled;
+        }
       }
     }
   }

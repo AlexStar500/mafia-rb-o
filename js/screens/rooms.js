@@ -73,8 +73,8 @@ export function createRoomsScreen(ctx) {
           <span class="eyebrow">${icon("users", { size: 13 })} Живые комнаты</span>
           <h1 class="page-title">Найдите свой город</h1>
           <p class="page-sub">
-            «Порты» живут во вкладках этого браузера. «По IP» — как в CS2: хост запускает сервер, остальные заходят по адресу, хоть из другого города.
-            «Онлайн» идёт через relay. Сам сайт лежит на GitHub Pages — там доступны «Порты» и «Онлайн».
+            «Порты» живут во вкладках этого браузера. «По IP» — хост запускает сервер, остальные заходят по его адресу, хоть из другой сети.
+            «Онлайн» идёт через relay и работает с любого устройства.
           </p>
         </div>
         <button class="btn btn--primary" type="button" data-go-create>${icon("plus", { size: 17 })} Создать</button>
@@ -132,7 +132,7 @@ export function createRoomsScreen(ctx) {
           ${icon("info", { size: 13 })}
           ${app.settings.relayUrl
             ? "Онлайн-комнаты видны всем, у кого есть адрес relay. Порты видны только в этом браузере."
-            : "Онлайн-режим выключен: GitHub Pages и свой домен отдают только файлы игры. Укажите relay в настройках, чтобы играть по сети."}
+            : "Онлайн-режим выключен: без relay устройства не увидят друг друга. Укажите relay в настройках, чтобы играть по сети."}
         </p>
         <button class="btn btn--quiet btn--sm" type="button" data-go-settings>${icon("settings", { size: 15 })} Настройки сети</button>
       </div>

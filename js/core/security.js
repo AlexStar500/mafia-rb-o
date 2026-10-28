@@ -122,9 +122,18 @@ export function normalizeRelayUrl(value) {
   } catch {
     return "";
   }
-  if (!["ws:", "wss:"].includes(url.protocol)) return "";
+  if (!["ws:", "wss:", "http:", "https:"].includes(url.protocol)) return "";
   if (url.username || url.password) return "";
-  if (typeof location !== "undefined" && location.protocol === "https:" && url.protocol !== "wss:") return "";
+  if (typeof location !== "undefined" && location.protocol === "https:" && !["wss:", "https:"].includes(url.protocol)) {
+    return "";
+  }
+  if (url.protocol === "http:" || url.protocol === "https:") {
+    url.hash = "";
+    url.search = "";
+    const path = url.pathname.replace(/\/+$/, "");
+    url.pathname = path || "/api";
+    return url.toString().replace(/\/$/, "");
+  }
   return url.toString();
 }
 

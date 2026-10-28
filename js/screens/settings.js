@@ -3,9 +3,8 @@ import { icon } from "../ui/icons.js";
 import { avatar } from "../ui/components.js";
 import { confirmModal } from "../ui/modal.js";
 import { AVATAR_COLORS } from "../core/storage.js";
-import { nickError } from "../core/security.js";
-import { normalizeRelayEndpoint } from "../net/protocol.js";
-import { BOT_CHAT_LEVELS } from "../data/roles.js";
+import { nickError, normalizeRelayUrl } from "../core/security.js";
+import { BOT_CHAT_LEVELS, ROLE_ORDER } from "../data/roles.js";
 
 const EFFECT_OPTIONS = Object.freeze([
   { id: "auto", name: "Авто" },
@@ -253,9 +252,8 @@ export function createSettingsScreen(ctx) {
               <div class="notice">
                 ${icon("info", { size: 16 })}
                 <span>
-                  Сайт лежит на GitHub Pages и отдаёт только файлы игры — сервер там не запускается. Для других устройств есть два пути:
-                  «По IP» (как в CS2: <span class="mono">npm start</span> у хоста, остальные заходят по адресу) или онлайн-relay.
-                  Без сервера работают тренировка и «Порты» — комнаты в соседних вкладках.
+                  Для других устройств есть два пути: «По IP» (<span class="mono">npm start</span> у хоста, остальные заходят по его адресу)
+                  или онлайн-relay. Без сервера работают тренировка и «Порты» — комнаты в соседних вкладках этого браузера.
                 </span>
               </div>
               <label class="field settings-relay" for="settings-relay">
@@ -267,14 +265,14 @@ export function createSettingsScreen(ctx) {
                     data-settings-relay
                     type="url"
                     value="${relayDraft}"
-                    placeholder="wss://relay.example/ws"
+                    placeholder="https://mafiarbovercel.vercel.app или wss://relay.example/ws"
                     autocomplete="off"
                     spellcheck="false"
                   />
                   <button class="btn btn--ghost" type="button" data-settings-test>${testing ? "Проверяем…" : "Проверить"}</button>
                 </div>
                 <span class="field__error" data-relay-error></span>
-                <span class="field__hint" data-relay-status>${relayState ? stateLine(relayState) : "Введите wss:// адрес. На HTTPS обычный ws:// заблокирован."}</span>
+                <span class="field__hint" data-relay-status>${relayState ? stateLine(relayState) : "Введите http(s):// адрес Vercel-релея или wss:// адрес WebSocket-сервера."}</span>
               </label>
               <div class="row wrap">
                 <button class="btn btn--primary btn--sm" type="button" data-settings-save-relay>${icon("check", { size: 15 })} Сохранить адрес</button>
@@ -338,7 +336,7 @@ export function createSettingsScreen(ctx) {
             <div class="panel__body">
               <dl class="about-list">
                 <div><dt>Версия</dt><dd>${app.version ?? "2.0"}</dd></div>
-                <div><dt>Ролей</dt><dd>6</dd></div>
+                <div><dt>Ролей</dt><dd>${ROLE_ORDER.length}</dd></div>
                 <div><dt>Ботов</dt><dd>20</dd></div>
                 <div><dt>Музыка</dt><dd>авторская</dd></div>
                 <div><dt>Хранение</dt><dd>localStorage</dd></div>
@@ -412,16 +410,11 @@ export function createSettingsScreen(ctx) {
     const input = qs("[data-settings-relay]", rootRef);
     const error = qs("[data-relay-error]", rootRef);
     const status = qs("[data-relay-status]", rootRef);
-    const value = normalizeRelayEndpoint(input?.value ?? "");
+    const value = normalizeRelayUrl(input?.value ?? "");
     if (!value) {
-      error.textContent = "Нужен корректный ws:// или wss:// адрес.";
+      error.textContent = "Нужен корректный ws://, wss://, http:// или https:// адрес.";
       input?.setAttribute("aria-invalid", "true");
       input?.focus({ preventScroll: true });
-      return;
-    }
-    if (typeof location !== "undefined" && location.protocol === "https:" && !value.startsWith("wss:")) {
-      error.textContent = "На HTTPS нужен защищённый wss:// relay.";
-      input?.setAttribute("aria-invalid", "true");
       return;
     }
     error.textContent = "";
@@ -564,9 +557,9 @@ export function createSettingsScreen(ctx) {
           const input = qs("[data-settings-relay]", root);
           const error = qs("[data-relay-error]", root);
           const raw = input?.value ?? "";
-          const value = raw.trim() ? normalizeRelayEndpoint(raw) : "";
+          const value = raw.trim() ? normalizeRelayUrl(raw) : "";
           if (raw.trim() && !value) {
-            error.textContent = "Некорректный адрес. Пример: wss://relay.example/ws";
+            error.textContent = "Некорректный адрес. Пример: https://mafiarbovercel.vercel.app или wss://relay.example/ws";
             input?.setAttribute("aria-invalid", "true");
             return;
           }

@@ -1,8 +1,8 @@
 import { html, qs, mount } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { RoomForm } from "../ui/roomForm.js";
-import { normalizeRelayEndpoint } from "../net/protocol.js";
-import { probeSameOriginRelay } from "../net/auto.js";
+import { normalizeRelayUrl } from "../core/security.js";
+import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, resolveRelayForMode } from "../net/auto.js";
 import { normalizeRoomConfig, computeRoleSetup, ROLES } from "../data/roles.js";
 
 function localRelayDefault() {
@@ -13,7 +13,7 @@ function localRelayDefault() {
   } catch {
     // ignore
   }
-  return "";
+  return PUBLIC_HTTP_RELAY;
 }
 
 function summarySetup(config) {
@@ -81,21 +81,21 @@ export function createCreateScreen(ctx) {
                   <span class="mode-option__icon">${icon("monitor", { size: 20 })}</span>
                   <span>
                     <b>Порты</b>
-                    <span>Вкладки этого браузера. Сайт на GitHub Pages — сервер не нужен.</span>
+                    <span>Вкладки этого браузера. Без сервера: комната живёт, пока открыта хотя бы одна вкладка.</span>
                   </span>
                 </button>
                 <button class="mode-option ${mode === "lan" ? "is-active" : ""}" type="button" data-create-mode="lan" role="radio" aria-checked="${mode === "lan" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 20 })}</span>
                   <span>
                     <b>По IP</b>
-                    <span>Как в CS2: хост запускает сервер, остальные заходят по адресу. Можно из любого города.</span>
+                    <span>Хост запускает сервер, остальные заходят по его адресу. Можно из другой сети, если открыт порт.</span>
                   </span>
                 </button>
                 <button class="mode-option ${mode === "online" ? "is-active" : ""}" type="button" data-create-mode="online" role="radio" aria-checked="${mode === "online" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("wifi", { size: 20 })}</span>
                   <span>
                     <b>Онлайн</b>
-                    <span>Relay в интернете, без проброса портов. Работает и на GitHub Pages.</span>
+                    <span>Relay в интернете, без проброса портов. Работает с любого устройства.</span>
                   </span>
                 </button>
               </div>
@@ -108,7 +108,7 @@ export function createCreateScreen(ctx) {
                     type="text"
                     data-create-relay
                     value="${settings.relayUrl || localRelayDefault()}"
-                    placeholder="wss://your-relay.example/ws"
+                    placeholder="https://mafiarbovercel.vercel.app или wss://relay.example/ws"
                     autocomplete="off"
                     spellcheck="false"
                   />
@@ -236,17 +236,18 @@ export function createCreateScreen(ctx) {
         event.preventDefault();
         let relayUrl = "";
         if (mode === "online") {
-          relayUrl = normalizeRelayEndpoint(relayInput.value);
+          const rawRelay = relayInput.value.trim();
+          relayUrl = normalizeRelayUrl(rawRelay);
           const error = qs("[data-relay-error]", root);
-          if (relayUrl && typeof location !== "undefined" && location.protocol === "https:" && !relayUrl.startsWith("wss:")) {
-            error.textContent = "На HTTPS нужен защищённый wss:// relay.";
+          if (rawRelay && !relayUrl) {
+            error.textContent = "Укажите ws://, wss://, http:// или https:// адрес.";
             relayInput.setAttribute("aria-invalid", "true");
             relayInput.focus({ preventScroll: true });
             return;
           }
-          if (!relayUrl) relayUrl = await detectSameOrigin();
+          if (!relayUrl) relayUrl = await resolveRelayForMode("online", "");
           if (!relayUrl) {
-            error.textContent = "Укажите корректный ws:// или wss:// адрес.";
+            error.textContent = "Relay не найден. Укажите адрес вручную.";
             relayInput.setAttribute("aria-invalid", "true");
             relayInput.focus({ preventScroll: true });
             app.playSfx("error");

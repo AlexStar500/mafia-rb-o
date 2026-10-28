@@ -13,9 +13,21 @@ import { BotRuntime } from "../game/bot.js";
 import { GameEngine, PHASE } from "../game/engine.js";
 import { createLocalHost, joinLocalRoom, LOCAL_ROOM_LABELS } from "./local.js";
 import { OnlineGuestAdapter, OnlineHostAdapter } from "./online.js";
+import { HttpGuestAdapter, HttpHostAdapter } from "./http.js";
+import { isHttpRelayUrl } from "./protocol.js";
 
-const BOT_ACTION_KINDS = new Set(["chat", "ready", "night", "vote", "sync", "spectate-speed", "spectate-pause"]);
-const NIGHT_ACTIONS = new Set(["kill", "heal", "check", "contract"]);
+const BOT_ACTION_KINDS = new Set([
+  "chat",
+  "ready",
+  "night",
+  "day",
+  "vote",
+  "sync",
+  "spectate-speed",
+  "spectate-pause",
+]);
+const NIGHT_ACTIONS = new Set(["kill", "heal", "check", "contract", "drink", "block", "puppet"]);
+const DAY_ACTIONS = new Set(["reveal", "judge"]);
 const CHAT_CHANNELS = new Set(["public", "mafia", "dead"]);
 
 export function normalizeSelf(input = {}) {
@@ -574,6 +586,7 @@ export class HostSession extends BaseSession {
         const channel = CHAT_CHANNELS.has(payload.channel) ? payload.channel : "public";
         const result = this.engine.addChat(playerId, typeof payload.text === "string" ? payload.text : "", {
           quickId: typeof payload.quickId === "string" ? payload.quickId : null,
+          quickRoleId: typeof payload.quickRoleId === "string" ? payload.quickRoleId : null,
           channel,
           targetId: typeof payload.targetId === "string" ? payload.targetId : null,
         });
@@ -589,6 +602,12 @@ export class HostSession extends BaseSession {
       case "night": {
         if (!playerId || typeof payload.action !== "string" || !NIGHT_ACTIONS.has(payload.action)) return;
         const result = this.engine.setNightAction(playerId, payload.action, payload.targetId ?? null);
+        if (!result.ok) this._notice(peerId, result.error ?? "Действие недоступно.", "warn");
+        return;
+      }
+      case "day": {
+        if (!playerId || typeof payload.action !== "string" || !DAY_ACTIONS.has(payload.action)) return;
+        const result = this.engine.setDayAction(playerId, payload.action, payload.targetId ?? null);
         if (!result.ok) this._notice(peerId, result.error ?? "Действие недоступно.", "warn");
         return;
       }
@@ -691,22 +710,30 @@ export class HostSession extends BaseSession {
     return { ok: true };
   }
 
-  sendChat({ text = "", quickId = null, targetId = null, channel = "public" } = {}) {
+  sendChat({ text = "", quickId = null, quickRoleId = null, targetId = null, channel = "public" } = {}) {
     if (!this.viewerId) return { ok: false, error: "Наблюдатели не пишут в чат." };
     return this.engine.addChat(this.viewerId, text, {
       quickId: typeof quickId === "string" ? quickId : null,
+      quickRoleId: typeof quickRoleId === "string" ? quickRoleId : null,
       targetId: typeof targetId === "string" ? targetId : null,
       channel,
     });
   }
 
-  sendQuickChat(quickId, { targetId = null, channel = "public" } = {}) {
-    return this.sendChat({ quickId, targetId, channel });
+  sendQuickChat(quickId, { targetId = null, quickRoleId = null, channel = "public" } = {}) {
+    return this.sendChat({ quickId, targetId, quickRoleId, channel });
   }
 
   nightAction(action, targetId) {
     if (!this.viewerId) return { ok: false, error: "Наблюдатели не действуют." };
+    if (!NIGHT_ACTIONS.has(action)) return { ok: false, error: "Неизвестное действие." };
     return this.engine.setNightAction(this.viewerId, action, targetId);
+  }
+
+  dayAction(action, targetId) {
+    if (!this.viewerId) return { ok: false, error: "Наблюдатели не действуют." };
+    if (!DAY_ACTIONS.has(action)) return { ok: false, error: "Неизвестное действие." };
+    return this.engine.setDayAction(this.viewerId, action, targetId);
   }
 
   vote(targetId) {
@@ -953,24 +980,31 @@ export class GuestSession extends BaseSession {
     return { ok: true };
   }
 
-  sendChat({ text = "", quickId = null, targetId = null, channel = "public" } = {}) {
+  sendChat({ text = "", quickId = null, quickRoleId = null, targetId = null, channel = "public" } = {}) {
     if (this.spectator) return { ok: false, error: "Наблюдатели не пишут в чат." };
     this._sendAction("chat", {
       text: typeof text === "string" ? text.slice(0, 160) : "",
       quickId: typeof quickId === "string" ? quickId : null,
+      quickRoleId: typeof quickRoleId === "string" ? quickRoleId : null,
       targetId: typeof targetId === "string" ? targetId : null,
       channel: CHAT_CHANNELS.has(channel) ? channel : "public",
     });
     return { ok: true };
   }
 
-  sendQuickChat(quickId, { targetId = null, channel = "public" } = {}) {
-    return this.sendChat({ quickId, targetId, channel });
+  sendQuickChat(quickId, { targetId = null, quickRoleId = null, channel = "public" } = {}) {
+    return this.sendChat({ quickId, targetId, quickRoleId, channel });
   }
 
   nightAction(action, targetId) {
     if (!NIGHT_ACTIONS.has(action)) return { ok: false, error: "Неизвестное действие." };
     this._sendAction("night", { action, targetId: targetId ?? null });
+    return { ok: true };
+  }
+
+  dayAction(action, targetId) {
+    if (!DAY_ACTIONS.has(action)) return { ok: false, error: "Неизвестное действие." };
+    this._sendAction("day", { action, targetId: targetId ?? null });
     return { ok: true };
   }
 
@@ -1031,17 +1065,30 @@ export async function openRoom({
   let adapter = injectedAdapter;
 
   if (!adapter && (mode === "online" || mode === "lan")) {
-    adapter = new OnlineHostAdapter({
-      url: relayUrl,
-      code: roomCode,
-      hostName: profile.name,
-      meta: {
-        ...cleanConfig,
-        hostName: profile.name,
-        public: cleanConfig.public,
-        lan: mode === "lan",
-      },
-    });
+    const useHttp = mode === "online" && isHttpRelayUrl(relayUrl);
+    adapter = useHttp
+      ? new HttpHostAdapter({
+          url: relayUrl,
+          code: roomCode,
+          hostName: profile.name,
+          meta: {
+            ...cleanConfig,
+            hostName: profile.name,
+            public: cleanConfig.public,
+            lan: false,
+          },
+        })
+      : new OnlineHostAdapter({
+          url: relayUrl,
+          code: roomCode,
+          hostName: profile.name,
+          meta: {
+            ...cleanConfig,
+            hostName: profile.name,
+            public: cleanConfig.public,
+            lan: mode === "lan",
+          },
+        });
     const welcome = await adapter.connect();
     const session = new HostSession({
       roomCode: welcome.code,
@@ -1090,14 +1137,24 @@ export async function joinRoom({
 } = {}) {
   const profile = normalizeSelf(self);
   if (mode === "online" || mode === "lan") {
-    const adapter = new OnlineGuestAdapter({
-      url: relayUrl,
-      code,
-      name: profile.name,
-      avatar: profile.avatar,
-      color: profile.color,
-      spectate,
-    });
+    const useHttp = mode === "online" && isHttpRelayUrl(relayUrl);
+    const adapter = useHttp
+      ? new HttpGuestAdapter({
+          url: relayUrl,
+          code,
+          name: profile.name,
+          avatar: profile.avatar,
+          color: profile.color,
+          spectate,
+        })
+      : new OnlineGuestAdapter({
+          url: relayUrl,
+          code,
+          name: profile.name,
+          avatar: profile.avatar,
+          color: profile.color,
+          spectate,
+        });
     await adapter.connect();
     const session = new GuestSession({ adapter, self: profile, mode });
     await session.waitForWelcome(7000);

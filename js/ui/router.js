@@ -7,8 +7,7 @@
  * re-rendering anything.
  */
 
-import { normalizeRoomCode } from "../core/security.js";
-import { normalizeRelayEndpoint } from "../net/protocol.js";
+import { normalizeRelayUrl, normalizeRoomCode } from "../core/security.js";
 
 export const ROUTES = Object.freeze([
   "menu",
@@ -120,7 +119,7 @@ function joinRedirectQuery(search = "") {
   const params = new URLSearchParams(search || "");
   const code = normalizeRoomCode(params.get("room") ?? params.get("code") ?? "");
   if (!code) return "";
-  const relay = normalizeRelayEndpoint(params.get("relay") ?? "");
+  const relay = normalizeRelayUrl(params.get("relay") ?? "");
   const requestedMode = params.get("mode");
   const mode =
     requestedMode === "local" || requestedMode === "online" || requestedMode === "lan" ? requestedMode : "";
@@ -169,7 +168,7 @@ export function deepLinkRootRedirect(pathname = "/", search = "") {
     // Solo/spectator sessions are deliberately not restorable after a reload.
     if (mode === "solo" || mode === "spectate") return "/";
     const query = new URLSearchParams({ room: code });
-    const relay = normalizeRelayEndpoint(params.get("relay") ?? "");
+    const relay = normalizeRelayUrl(params.get("relay") ?? "");
     if (relay) query.set("relay", relay);
     if (mode === "local" || mode === "online" || mode === "lan") query.set("mode", mode);
     return `/?${query.toString()}`;
@@ -178,7 +177,7 @@ export function deepLinkRootRedirect(pathname = "/", search = "") {
     const query = joinRedirectQuery(search);
     if (query) return `/?${query}`;
     const fallback = new URLSearchParams({ route: "join" });
-    const relay = normalizeRelayEndpoint(params.get("relay") ?? "");
+    const relay = normalizeRelayUrl(params.get("relay") ?? "");
     const mode = params.get("mode");
     if (relay) fallback.set("relay", relay);
     if (mode === "local" || mode === "online" || mode === "lan") fallback.set("mode", mode);

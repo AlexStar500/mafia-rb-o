@@ -13,11 +13,11 @@ import {
   isValidRoomCode,
   nickError,
   normalizeHexColor,
+  normalizeRelayUrl,
   normalizeRoomCode,
   sanitizeNick,
 } from "./core/security.js";
-import { normalizeRelayEndpoint } from "./net/protocol.js";
-import { probeSameOriginRelay, resolveRelayForMode } from "./net/auto.js";
+import { resolveRelayForMode } from "./net/auto.js";
 import { applyEffects, autoTuneEffects } from "./core/effects.js";
 import { initials } from "./core/format.js";
 import { normalizeRoomConfig } from "./data/roles.js";
@@ -81,7 +81,7 @@ function queryString(values) {
 
 export class App {
   constructor({ settings = loadSettings(), base = null } = {}) {
-    this.version = "2.0.20";
+    this.version = "2.2.1";
     this.settings = normalizeSettings(settings);
     this.playerId = createId("p");
     this.session = null;
@@ -340,7 +340,7 @@ export class App {
   }
 
   async testRelay(url) {
-    const endpoint = normalizeRelayEndpoint(url);
+    const endpoint = normalizeRelayUrl(url);
     if (!endpoint) return { ok: false, error: "Некорректный адрес relay." };
     return checkRelay(endpoint);
   }
@@ -553,7 +553,7 @@ export class App {
       return false;
     }
     this.toast("Комната не открыта в этой вкладке. Войдите по коду заново.", { tone: "warn" });
-    await this.router.replace(`/join${queryString({ code, relay: normalizeRelayEndpoint(route.query?.relay ?? "") })}`);
+    await this.router.replace(`/join${queryString({ code, relay: normalizeRelayUrl(route.query?.relay ?? "") })}`);
     return false;
   }
 
@@ -835,7 +835,7 @@ export class App {
         name: "Тренировка",
         maxPlayers: count,
         minStart: Math.min(5, count),
-        roles: { doctor: true, assassin: false, jester: false },
+        roles: { doctor: 1, assassin: 0, jester: 0 },
         botChat: chat,
         revealOnDeath: this.settings.revealOnDeath,
         allowSpectators: true,
@@ -872,7 +872,7 @@ export class App {
         name: "Ночной город · наблюдение",
         maxPlayers: count,
         minStart: Math.min(6, count),
-        roles: { doctor: true, assassin: count >= 8, jester: count >= 7 },
+        roles: { doctor: 1, assassin: count >= 8 ? 1 : 0, jester: count >= 7 ? 1 : 0 },
         botChat: this.settings.botChat,
         revealOnDeath: true,
         allowSpectators: true,
@@ -1064,7 +1064,7 @@ export class App {
 
   async _sameOriginRelay() {
     if (Date.now() - this._autoRelayAt < 30_000) return this._autoRelay;
-    this._autoRelay = await probeSameOriginRelay();
+    this._autoRelay = await resolveRelayForMode("online", "");
     this._autoRelayAt = Date.now();
     return this._autoRelay;
   }
@@ -1145,6 +1145,13 @@ export class App {
   nightAction(action, targetId) {
     if (!this.session) return { ok: false, error: "Партия не идёт." };
     const result = this.session.nightAction(action, targetId);
+    if (result?.ok === false && result.error) this.toast(result.error, { tone: "warn" });
+    return result;
+  }
+
+  dayAction(action, targetId) {
+    if (!this.session) return { ok: false, error: "Партия не идёт." };
+    const result = this.session.dayAction(action, targetId);
     if (result?.ok === false && result.error) this.toast(result.error, { tone: "warn" });
     return result;
   }
@@ -1253,9 +1260,9 @@ export class App {
           <span>${solo
             ? "Тренировка не подключает других игроков. Создайте комнату, чтобы играть вместе."
             : local
-              ? "Порты работают только во вкладках этого браузера. Для других устройств выберите «По IP» или «Онлайн». Сам сайт на GitHub Pages сеть не поднимет."
+              ? "Порты работают только во вкладках этого браузера. Для других устройств выберите «По IP» или «Онлайн»."
               : lan
-                ? "Как в CS2: ссылка ведёт на адрес хоста. Сервер запускается через npm start. Игроки из других городов подключатся, если открыт порт 8080 (проброс роутера) или Cloudflare Tunnel. Адрес localhost или 127.0.0.1 работает только на самом хосте."
+                ? "Ссылка ведёт на адрес компьютера-хоста. Сервер запускается через npm start. Игроки из другой сети подключатся, если открыт порт 8080 (проброс роутера) или Cloudflare Tunnel. Адрес localhost или 127.0.0.1 работает только на самом хосте."
                 : "Ссылка уже содержит адрес relay. Другому игроку не нужно ничего настраивать."}</span>
         </div>
       </div>`,

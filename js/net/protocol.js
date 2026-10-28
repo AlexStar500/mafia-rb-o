@@ -80,11 +80,11 @@ export function cleanRoomMeta(input = {}) {
     name: String(src.name ?? "Ночной город").replace(/[<>]/g, "").slice(0, MAX_ROOM_NAME) || "Ночной город",
     hostId: typeof src.hostId === "string" ? src.hostId.slice(0, 40) : "",
     hostName: sanitizeNick(src.hostName) || "",
-    players: safeInt(src.players, 0, 20, 0),
-    humans: safeInt(src.humans, 0, 20, 0),
-    bots: safeInt(src.bots, 0, 20, 0),
-    maxPlayers: safeInt(src.maxPlayers, 4, 20, 8),
-    minStart: safeInt(src.minStart, 4, 20, 4),
+    players: safeInt(src.players, 0, 30, 0),
+    humans: safeInt(src.humans, 0, 30, 0),
+    bots: safeInt(src.bots, 0, 25, 0),
+    maxPlayers: safeInt(src.maxPlayers, 4, 25, 8),
+    minStart: safeInt(src.minStart, 4, 25, 4),
     status,
     public: src.public !== false,
     quick: src.quick === true,
@@ -139,6 +139,45 @@ export function defaultRelayEndpoint() {
   if (typeof location === "undefined" || !location.host) return "";
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${location.host}/ws`;
+}
+
+/** HTTP(S) relay base. A bare host gets `/api`, which is Vercel's convention. */
+export function normalizeHttpRelayUrl(value) {
+  if (typeof value !== "string") return "";
+  const raw = value.trim().slice(0, 300);
+  if (!raw) return "";
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "";
+  }
+  if (!["http:", "https:"].includes(url.protocol)) return "";
+  if (url.username || url.password) return "";
+  if (typeof location !== "undefined" && location.protocol === "https:" && url.protocol !== "https:") return "";
+  url.hash = "";
+  url.search = "";
+  const path = url.pathname.replace(/\/+$/, "");
+  url.pathname = path || "/api";
+  return url.toString().replace(/\/$/, "");
+}
+
+export function isHttpRelayUrl(value) {
+  return /^https?:\/\//i.test(String(value ?? "").trim());
+}
+
+export function httpRelayBase(relayUrl) {
+  return normalizeHttpRelayUrl(relayUrl);
+}
+
+export function httpRoomsUrl(relayUrl) {
+  const base = httpRelayBase(relayUrl);
+  return base ? `${base}/rooms` : "";
+}
+
+export function httpHealthUrl(relayUrl) {
+  const base = httpRelayBase(relayUrl);
+  return base ? `${base}/health` : "";
 }
 
 /** `wss://host/ws` -> `https://host`, `wss://host/foo/ws` -> `https://host/foo` */

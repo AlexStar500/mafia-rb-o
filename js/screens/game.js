@@ -12,7 +12,7 @@ import {
   voteBars,
 } from "../ui/components.js";
 import { createChat } from "../ui/chat.js";
-import { openModal, closeModal } from "../ui/modal.js";
+import { openModal, closeModal, confirmModal } from "../ui/modal.js";
 import { ROLES, TEAMS } from "../data/roles.js";
 import { formatClock, formatShortTime, playersLabel, pluralRu } from "../core/format.js";
 import { asset } from "../core/assets.js";
@@ -36,16 +36,30 @@ const ACTION_LABEL = Object.freeze({
   heal: "Лечить",
   check: "Проверить",
   contract: "Контракт",
+  drink: "Напоить",
+  block: "Заблокировать",
+  puppet: "Выбрать марионетку",
+  reveal: "Узнать роль",
+  judge: "Приговор",
+  cure: "Излечить зомби",
   vote: "Повесить",
 });
 
 const ACTION_HINT = Object.freeze({
   kill: "Мафия выбирает жертву вместе. Голос команды учитывается при равенстве.",
   heal: "Лечение не повторяется две ночи подряд. Себя можно спасти один раз за игру.",
-  check: "Результат проверки появится в ваших записях. Ассасин выглядит как мафия.",
-  contract: "Контракт ассасина пробивает лечение доктора. Один раз за игру.",
+  check: "Результат проверки появится в ваших записях. Ассасин, бармен и шпион выглядят как мафия.",
+  contract: "Контракт ассасина пробивает лечение доктора и забирает жизнь самого ассасина, если его не прикрыли.",
+  drink: "Напоённый игрок весь следующий день пишет только бессмысленные символы.",
+  block: "Заблокированный не действует ночью, а днём не голосует и не использует способности.",
+  puppet: "Марионетка выбирается один раз на всю игру. Её победа станет вашей.",
+  reveal: "Шпион узнаёт точную роль игрока. Один раз в день, без права передумать.",
+  judge: "Если цель — мафия, погибнет она. Если нет — погибнете вы. Приговор окончательный.",
+  cure: "Доктор может вернуть зомби к жизни три раза за игру. После лечения цель снова играет за город.",
   vote: "Один голос за фазу, без переголосования. Ничья означает, что никто не повешен.",
 });
+
+const DAY_PHASES = new Set(["dawn", "discussion", "voting"]);
 
 function pluralVotes(count) {
   return `${count} ${pluralRu(count, ["голос", "голоса", "голосов"])}`;
@@ -62,8 +76,44 @@ function visibleRole(player) {
 function actionConfig(view, mode) {
   if (!view) return null;
   const self = view.self ?? {};
+  if (DAY_PHASES.has(view.phase) && !view.spectator && self.alive) {
+    if (mode === "reveal" && view.day?.spy?.available) {
+      return {
+        kind: "day",
+        action: "reveal",
+        options: (view.players ?? [])
+          .filter((player) => player.alive && player.id !== view.selfId)
+          .map((player) => player.id),
+        blocked: [],
+        queued: null,
+      };
+    }
+    if (mode === "judge" && view.day?.judge?.available) {
+      return {
+        kind: "day",
+        action: "judge",
+        options: (view.players ?? [])
+          .filter((player) => player.alive && player.id !== view.selfId)
+          .map((player) => player.id),
+        blocked: [],
+        queued: null,
+      };
+    }
+    if (mode === "cure" && view.day?.cure?.available) {
+      return {
+        kind: "day",
+        action: "cure",
+        options: (view.players ?? [])
+          .filter((player) => player.alive && player.zombie)
+          .map((player) => player.id),
+        blocked: [],
+        queued: null,
+      };
+    }
+  }
   if (view.phase === "voting") {
     if (view.spectator || !self.alive) return null;
+    if (view.day?.blocked) return null;
     return {
       kind: "vote",
       action: "vote",
@@ -474,6 +524,46 @@ export function createGameScreen(ctx, initialView) {
   // Action dock
   // -----------------------------------------------------------------------
 
+  function actionIcon(action, size = 20) {
+    const map = {
+      heal: "heart",
+      check: "search",
+      contract: "blade",
+      drink: "coffee",
+      block: "music",
+      puppet: "key",
+      reveal: "eye",
+      judge: "gavel",
+      cure: "heart",
+      vote: "vote",
+      kill: "target",
+    };
+    return icon(map[action] ?? "target", { size });
+  }
+
+  function dayActionButtons() {
+    const day = view?.day;
+    if (!day || !view?.self?.alive) return "";
+    const items = [];
+    if (day.spy?.available) {
+      items.push(html`<button class="action-toggle__btn ${mode === "reveal" ? "is-active" : ""}" type="button" data-game-mode="reveal">
+        ${icon("eye", { size: 13 })} Узнать роль
+      </button>`);
+    }
+    if (day.judge?.available) {
+      items.push(html`<button class="action-toggle__btn ${mode === "judge" ? "is-active" : ""}" type="button" data-game-mode="judge">
+        ${icon("gavel", { size: 13 })} Приговор
+      </button>`);
+    }
+    if (day.cure?.available) {
+      items.push(html`<button class="action-toggle__btn ${mode === "cure" ? "is-active" : ""}" type="button" data-game-mode="cure">
+        ${icon("heart", { size: 13 })} Излечить · ${day.cure.left}
+      </button>`);
+    }
+    if (!items.length) return "";
+    return html`<div class="action-toggle" role="group" aria-label="Дневное действие">${items}</div>`;
+  }
+
   function renderActions() {
     const node = qs("[data-game-actions]", root());
     if (!node || !view) return;
@@ -519,25 +609,33 @@ export function createGameScreen(ctx, initialView) {
     if (view.phase === "voting") {
       const myVote = view.votes?.myVote;
       const votedName = myVote && myVote !== "skip" ? targetName(view, myVote) : null;
+      const blocked = Boolean(view.day?.blocked);
+      const drunk = Boolean(self.drunk);
+      const cannotVote = blocked || drunk;
       mountStable(
         node,
         html`<section class="action-dock action-dock--vote ${!self.alive ? "is-disabled" : ""}">
           <div class="action-dock__icon">${icon("vote", { size: 20 })}</div>
           <div class="action-dock__copy">
-            <strong>${self.alive ? "Голосование" : "Мёртвые не голосуют"}</strong>
+            <strong>${self.alive ? (cannotVote ? "Голос заблокирован" : "Голосование") : "Мёртвые не голосуют"}</strong>
             <span>
               ${myVote
                 ? myVote === "skip"
                   ? "Вы пропустили голосование."
                   : `Ваш голос: ${votedName}. Голос уже нельзя изменить.`
                 : self.alive
-                  ? ACTION_HINT.vote
+                  ? drunk
+                    ? "Вы слишком пьяны, чтобы голосовать. Бармен постарался."
+                    : blocked
+                      ? "Музыкант играл всю ночь: сегодня вы не голосуете."
+                      : ACTION_HINT.vote
                   : "Город решает без вас. Слушайте и запоминайте."}
             </span>
           </div>
           <div class="action-dock__side">
+            ${dayActionButtons()}
             <span class="badge badge--muted">${view.votes?.allVoted ? "все голоса" : `${view.votes?.votedIds?.length ?? 0}/${view.votes?.totalAlive ?? 0}`}</span>
-            ${self.alive && !myVote
+            ${self.alive && !myVote && !cannotVote
               ? html`<button class="btn btn--ghost btn--sm" type="button" data-game-skip>${icon("coffee", { size: 15 })} Пропустить</button>`
               : ""}
           </div>
@@ -570,13 +668,23 @@ export function createGameScreen(ctx, initialView) {
       const contract = view.night?.contract;
       const showContract = view.self?.roleId === "assassin";
       const selectedName = active?.queued ? targetName(view, active.queued) : null;
+      const puppetName = action.type === "puppet" && action.chosenTargetId ? targetName(view, action.chosenTargetId) : null;
       mountStable(
         node,
         html`<section class="action-dock action-dock--night">
-          <div class="action-dock__icon">${icon(action.type === "heal" ? "heart" : action.type === "check" ? "search" : action.type === "contract" ? "blade" : "target", { size: 20 })}</div>
+          <div class="action-dock__icon">${actionIcon(action.type)}</div>
           <div class="action-dock__copy">
             <strong>${ACTION_LABEL[active?.action] ?? "Ночь"}</strong>
-            <span>${ACTION_HINT[active?.action] ?? "Город спит."} ${selectedName ? `Цель: ${selectedName}.` : "Выберите цель на карте."}</span>
+            <span>
+              ${ACTION_HINT[active?.action] ?? "Город спит."}
+              ${puppetName
+                ? `Марионетка: ${puppetName}.`
+                : selectedName
+                  ? `Цель: ${selectedName}.`
+                  : active?.options?.length
+                    ? "Выберите цель на карте."
+                    : "Выбор уже сделан."}
+            </span>
           </div>
           <div class="action-dock__side">
             ${showContract
@@ -587,7 +695,7 @@ export function createGameScreen(ctx, initialView) {
                   </button>
                 </div>`
               : ""}
-            ${action.selected
+            ${action.selected || puppetName
               ? html`<span class="badge badge--town">${icon("check", { size: 10 })} действие принято</span>`
               : html`<span class="badge badge--muted">${icon("clock", { size: 10 })} ждём выбора</span>`}
           </div>
@@ -621,15 +729,24 @@ export function createGameScreen(ctx, initialView) {
       return;
     }
 
+    const dayBlocked = Boolean(view.day?.blocked);
+    const drunk = Boolean(self.drunk);
     mountStable(
       node,
       html`<section class="action-dock action-dock--day">
-        <div class="action-dock__icon">${icon("chat", { size: 20 })}</div>
+        <div class="action-dock__icon">${icon(drunk ? "coffee" : dayBlocked ? "lock" : "chat", { size: 20 })}</div>
         <div class="action-dock__copy">
-          <strong>Обсуждение</strong>
-          <span>Слушайте, задавайте вопросы и ищите несостыковки. Голосование начнётся по таймеру.</span>
+          <strong>${drunk ? "Вы пьяны" : dayBlocked ? "Действия заблокированы" : "Обсуждение"}</strong>
+          <span>
+            ${drunk
+              ? "Бармен постарался: сегодня город услышит от вас только бессмысленные символы."
+              : dayBlocked
+                ? "Музыкант играл всю ночь. Сегодня вы не голосуете и не используете способности."
+                : "Слушайте, задавайте вопросы и ищите несостыковки. Голосование начнётся по таймеру."}
+          </span>
         </div>
         <div class="action-dock__side">
+          ${dayActionButtons()}
           <span class="badge badge--muted">${view.votes?.totalAlive ?? 0} живых</span>
         </div>
       </section>`,
@@ -688,7 +805,18 @@ export function createGameScreen(ctx, initialView) {
           ${self.roleId === "doctor"
             ? html`<span>${icon("heart", { size: 13 })} самолечение ${self.selfHeals ? "использовано" : "доступно"}</span>`
             : ""}
+          ${self.roleId === "judge"
+            ? html`<span class="${self.judgeUsed ? "muted" : "gold"}">${icon("gavel", { size: 13 })} приговор ${self.judgeUsed ? "вынесен" : "готов"}</span>`
+            : ""}
+          ${self.roleId === "spy"
+            ? html`<span>${icon("eye", { size: 13 })} днём ${view.day?.spy?.usedToday ? "роль уже узнана" : "можно узнать роль"}</span>`
+            : ""}
+          ${self.roleId === "puppeteer"
+            ? html`<span>${icon("key", { size: 13 })} марионетка ${self.puppetTargetName ? `— ${self.puppetTargetName}` : "не выбрана"}</span>`
+            : ""}
         </div>
+        ${self.drunk ? html`<p class="notice notice--town">${icon("coffee", { size: 14 })} Вы пьяны: сегодня ваши сообщения превращаются в символы.</p>` : ""}
+        ${self.blocked ? html`<p class="notice notice--danger">${icon("music", { size: 14 })} Музыкант заблокировал ваши действия и голос на сегодня.</p>` : ""}
         ${self.muted ? html`<p class="notice notice--danger">${icon("lock", { size: 14 })} Вы заглушены хостом до конца игры.</p>` : ""}
       </div>`,
     );
@@ -785,8 +913,8 @@ export function createGameScreen(ctx, initialView) {
         <div class="target-bar__actions">
           <button class="btn btn--quiet btn--sm" type="button" data-game-cancel>Отмена</button>
           <button class="btn btn--primary btn--sm" type="button" data-game-confirm>
-            ${icon(active.action === "vote" ? "vote" : active.action === "heal" ? "heart" : active.action === "check" ? "search" : "target", { size: 15 })}
-            ${active.action === "vote" ? "Подтвердить голос" : "Подтвердить"}
+            ${actionIcon(active.action, 15)}
+            ${active.action === "vote" ? "Подтвердить голос" : active.action === "judge" ? "Вынести приговор" : "Подтвердить"}
           </button>
         </div>
       </div>`,
@@ -836,15 +964,18 @@ export function createGameScreen(ctx, initialView) {
         <div class="end-roles">
           <div class="end-roles__head">
             <span class="field__label">Роли города</span>
-            <span class="muted">${nextView.spectator ? "наблюдение" : self.team === winner.team ? "ваша команда победила" : "ваша команда проиграла"}</span>
+            <span class="muted">${nextView.spectator ? "наблюдение" : (winner.winnerIds ?? []).includes(nextView.selfId) ? "победа" : "проигрыш"}</span>
           </div>
           ${sorted.map(
-            (player) => html`<div class="end-role-row ${player.alive ? "" : "is-dead"} ${player.id === winner.mvpId ? "is-mvp" : ""} ${player.id === nextView.selfId ? "is-self" : ""}">
-              ${avatar(player, { size: "xs", dead: player.alive === false })}
-              <span class="end-role-row__name truncate">${player.name}${player.id === nextView.selfId ? " · вы" : ""}${player.id === winner.mvpId ? " · MVP" : ""}</span>
-              ${player.roleId ? roleChip(player.roleId) : html`<span class="badge badge--muted">роль скрыта</span>`}
-              <span class="end-role-row__state">${player.alive ? "жив" : "мёртв"}</span>
-            </div>`,
+            (player) => {
+              const won = (winner.winnerIds ?? []).includes(player.id);
+              return html`<div class="end-role-row ${player.alive ? "" : "is-dead"} ${player.id === winner.mvpId ? "is-mvp" : ""} ${player.id === nextView.selfId ? "is-self" : ""}">
+                ${avatar(player, { size: "xs", dead: player.alive === false })}
+                <span class="end-role-row__name truncate">${player.name}${player.id === nextView.selfId ? " · вы" : ""}${player.id === winner.mvpId ? " · MVP" : ""}</span>
+                ${player.roleId ? roleChip(player.roleId) : html`<span class="badge badge--muted">роль скрыта</span>`}
+                <span class="end-role-row__state ${won ? "is-win" : "is-loss"}">${player.alive ? "жив" : "мёртв"} · ${won ? "победа" : "проигрыш"}</span>
+              </div>`;
+            },
           )}
         </div>
         <p class="end-note">${icon("shield", { size: 14 })} <span>Итоги живут только в памяти комнаты. Чат и роли не сохраняются на сервере.</span></p>
@@ -934,6 +1065,10 @@ export function createGameScreen(ctx, initialView) {
     if (previous && previous.phaseSerial !== view.phaseSerial) {
       selected = null;
       if (mode === "contract" && !view.night?.contract?.available) mode = null;
+      if (mode === "reveal" && !view.day?.spy?.available) mode = null;
+      if (mode === "judge" && !view.day?.judge?.available) mode = null;
+      if (mode === "cure" && !view.day?.cure?.available) mode = null;
+      if (mode === "drink" || mode === "block" || mode === "puppet") mode = null;
       playersSignature = "";
     }
     if (lastPhaseSerial === null) lastPhaseSerial = view.phaseSerial;
@@ -1052,7 +1187,9 @@ export function createGameScreen(ctx, initialView) {
         if (modeButton) {
           const nextMode = modeButton.dataset.gameMode;
           if (nextMode === "contract" && !view?.night?.contract?.available) return;
-          mode = nextMode === "contract" ? "contract" : null;
+          if (nextMode === "reveal" && !view?.day?.spy?.available) return;
+          if (nextMode === "judge" && !view?.day?.judge?.available) return;
+          mode = nextMode === "kill" || nextMode === "vote" ? null : nextMode;
           selected = null;
           app.playSfx("select");
           playersSignature = "";
@@ -1076,17 +1213,45 @@ export function createGameScreen(ctx, initialView) {
           const active = config();
           if (!active || !selected) return;
           const targetId = selected;
-          const result = active.action === "vote"
-            ? app.vote(targetId)
-            : app.nightAction(active.action, targetId);
-          if (result?.ok !== false) {
-            app.playSfx(active.action === "vote" ? "vote" : "select");
-            selected = null;
-            renderPlayers(true);
-            renderTargetBar();
-            app.toast(active.action === "vote" ? "Голос учтён." : "Действие принято.", { tone: "town" });
-          } else if (result?.error) {
-            app.toast(result.error, { tone: "warn" });
+          const run = () => {
+            const result = active.action === "vote"
+              ? app.vote(targetId)
+              : active.kind === "day"
+                ? app.dayAction(active.action, targetId)
+                : app.nightAction(active.action, targetId);
+            if (result?.ok !== false) {
+              app.playSfx(active.action === "vote" ? "vote" : "select");
+              selected = null;
+              if (active.kind === "day") mode = null;
+              renderActions();
+              renderPlayers(true);
+              renderTargetBar();
+              app.toast(
+                active.action === "vote"
+                  ? "Голос учтён."
+                  : active.action === "reveal"
+                    ? "Роль известна. Запись добавлена."
+                    : active.action === "judge"
+                      ? "Приговор вынесен."
+                      : "Действие принято.",
+                { tone: "town" },
+              );
+            } else if (result?.error) {
+              app.toast(result.error, { tone: "warn" });
+            }
+          };
+          if (active.action === "judge") {
+            confirmModal({
+              title: `Приговор: ${targetName(view, targetId)}?`,
+              message: "Если это мафия — погибнет цель. Если нет — погибнете вы. Отменить приговор будет нельзя.",
+              confirmLabel: "Вынести приговор",
+              cancelLabel: "Отмена",
+              tone: "danger",
+            }).then((confirmed) => {
+              if (confirmed) run();
+            });
+          } else {
+            run();
           }
           return;
         }

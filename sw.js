@@ -7,7 +7,7 @@
  * a deploy; a versioned URL is always a cache miss, so a new service worker can
  * never precache yesterday's files into today's cache.
  */
-const VERSION = "2.0.20";
+const VERSION = "2.2.1";
 const CACHE = `mafia-v${VERSION}`;
 const INDEX = new URL("./index.html", self.location.href).href;
 const SCOPE = new URL("./", self.location.href).href;
@@ -54,6 +54,7 @@ const PRECACHE = [
   "./js/app.js",
   "./js/main.js",
   "./js/boot-guard.js",
+  "./js/https-redirect.js",
   "./js/audio/manager.js",
   "./js/core/assets.js",
   "./js/core/effects.js",
@@ -69,6 +70,7 @@ const PRECACHE = [
   "./js/game/bot.js",
   "./js/game/engine.js",
   "./js/net/auto.js",
+  "./js/net/http.js",
   "./js/net/local.js",
   "./js/net/online.js",
   "./js/net/protocol.js",
@@ -98,11 +100,17 @@ const PRECACHE = [
   "./assets/img/brand/icon-192.png",
   "./assets/img/brand/icon-512.png",
   "./assets/img/roles/assassin.png",
+  "./assets/img/roles/bartender.png",
   "./assets/img/roles/civilian.png",
   "./assets/img/roles/doctor.png",
   "./assets/img/roles/jester.png",
+  "./assets/img/roles/judge.png",
   "./assets/img/roles/mafia.png",
+  "./assets/img/roles/musician.png",
+  "./assets/img/roles/puppeteer.png",
   "./assets/img/roles/sheriff.png",
+  "./assets/img/roles/spy.png",
+  "./assets/img/roles/twin.png",
   // Bot avatars and music are cached on demand: precaching a megabyte of audio
   // before install made the first visit (and every SW update) crawl.
 ];
@@ -146,6 +154,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Relay endpoints and media range requests stay outside the cache.
+  if (url.pathname.startsWith("/api/")) return;
   if (url.pathname.endsWith("/ws") || url.pathname.endsWith("/rooms") || url.pathname.endsWith("/health")) return;
   if (request.headers.has("range")) return;
 

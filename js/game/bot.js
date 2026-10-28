@@ -2,7 +2,7 @@ import { pickOne, randomInt, seededRng, stableNoise } from "../core/random.js";
 import { sanitizeChat } from "../core/security.js";
 import { BOT_BY_ID } from "../data/bots.js";
 import { isAggressiveIntent, pickBotLine } from "../data/botPhrases.js";
-import { BOT_CHAT_LEVELS, ROLES } from "../data/roles.js";
+import { BOT_CHAT_LEVELS, ROLES, hidesMafiaRoster, isMafiaCoreRole } from "../data/roles.js";
 
 const DEFAULT_TRAITS = Object.freeze({
   logic: 0.6,
@@ -89,8 +89,9 @@ export class ChatDirector {
       intent,
       targetId,
       channel,
-      desiredAt: now + Math.max(0, delay),
-      expiresAt: now + 20_000,
+      createdAt: now,
+      desiredAt: now + Math.max(1800, delay),
+      expiresAt: now + 28_000,
       phaseSerial: this.engine.phaseSerial,
       priority,
     };
@@ -131,7 +132,9 @@ export class ChatDirector {
       this.queue.splice(index, 1);
       return;
     }
-    if (now - (item.bot.lastSpokeAt ?? 0) < 3800) return;
+    if (now - (item.bot.lastSpokeAt ?? 0) < 11_000) return;
+    // Everyone reads before speaking: a bot never answers in the same breath.
+    if (now - item.createdAt < 2200) return;
 
     // Anti-dogpile: one aggressive push per target per window, no echo parties.
     if (isAggressiveIntent(item.intent) && item.targetId) {
@@ -172,8 +175,8 @@ export class ChatDirector {
       targetId: item.targetId,
       playerId: item.playerId,
     });
-    const gap = this.level === "quiet" ? 2600 : this.level === "loud" ? 1200 : 1800;
-    this.nextAt = now + gap + Math.round(this.rng() * 700);
+    const gap = this.level === "quiet" ? 7000 : this.level === "loud" ? 3800 : 5200;
+    this.nextAt = now + gap + Math.round(this.rng() * 1400);
   }
 
   clear() {
@@ -208,6 +211,7 @@ export class BotBrain {
       claims: new Map(),
       recentAccusations: [],
       trust: new Map(),
+      opinionLock: new Map(),
     };
     this.phaseSerial = -1;
     this.spokenThisPhase = 0;
@@ -242,6 +246,12 @@ export class BotBrain {
     return this.player?.team === "mafia";
   }
 
+  /** Bartender and spy play for mafia but never see the family or its chat. */
+  get canSeeMafia() {
+    if (this.engine.config?.mode === "secret") return false;
+    return this.isMafia && !hidesMafiaRoster(this.roleId);
+  }
+
   get roleId() {
     return this.player?.roleId ?? null;
   }
@@ -258,6 +268,8 @@ export class BotBrain {
     this.voted = false;
     this.lastWordsSent = false;
     this.lastClaimAt = 0;
+    this.dayActionAt = 0;
+    this.dayActionTried = false;
     this._phaseEnteredAt = now;
     const level = this.level;
     const base = level.maxPerPhase;
@@ -265,9 +277,9 @@ export class BotBrain {
       1,
       Math.min(7, Math.round(base * (0.65 + this.traits.chattiness * 0.8) * (0.8 + this.rng() * 0.4))),
     );
-    this.nextChatAt = now + Math.round(2200 + this.rng() * 6500);
+    this.nextChatAt = now + Math.round(4200 + this.rng() * 9000);
     if (this.engine.phase === "discussion") {
-      this.nextChatAt = now + Math.round(1800 + this.rng() * 4200);
+      this.nextChatAt = now + Math.round(3600 + this.rng() * 7200);
     }
   }
 
@@ -287,12 +299,15 @@ export class BotBrain {
         !this.lastWordsSent
       ) {
         this.sendLastWords(now);
+      } else {
+        this.tickDeadChat(now);
       }
       return;
     }
 
     if (this.engine.phase === "night") this.tickNight(now);
     else if (this.engine.phase === "discussion" || this.engine.phase === "voting") {
+      this.tickDayAction(now);
       this.tickDayChat(now);
       if (this.engine.phase === "voting") this.tickVoting(now);
     } else if (this.engine.phase === "lastWords") {
@@ -303,6 +318,23 @@ export class BotBrain {
   // -----------------------------------------------------------------------
   // Lobby
   // -----------------------------------------------------------------------
+
+  /** The dead keep talking — quietly, in their own channel. */
+  tickDeadChat(now) {
+    if (this.engine.phase === "lobby" || this.engine.phase === "ended") return;
+    if (!this.deadChatAt) this.deadChatAt = now + 2500 + this.rng() * 9000;
+    if (now < this.deadChatAt) return;
+    this.deadChatAt = now + 14000 + this.rng() * 22_000;
+    const pool = ["emote", "smalltalk", "gg", "confusion"];
+    const intent = pool[Math.floor(this.rng() * pool.length)];
+    const text = pickBotLine(intent, this.style, this.varsFor(null), this.rng);
+    if (!text) return;
+    this.engine.addBotChat(this.playerId, text, {
+      channel: "dead",
+      intent,
+      targetId: null,
+    });
+  }
 
   tickLobby(now) {
     if (!this.player?.alive) return;
@@ -357,7 +389,7 @@ export class BotBrain {
       }
     }
 
-    if (this.isMafia && this.spokenThisPhase < 2 && this.rng() < 0.5) {
+    if (this.isMafia && this.engine.config?.mode !== "secret" && this.spokenThisPhase < 2 && this.rng() < 0.5) {
       if (this.nextChatAt <= now) {
         const targetId = this.chooseMafiaTarget();
         if (targetId) {
@@ -379,7 +411,7 @@ export class BotBrain {
   chooseNightAction(now) {
     const roleId = this.roleId;
     if (!roleId) return;
-    if (roleId === "mafia" || roleId === "assassin") {
+    if (isMafiaCoreRole(roleId)) {
       const targetId = this.chooseMafiaTarget();
       if (targetId) {
         this.engine.setNightAction(this.playerId, "kill", targetId);
@@ -395,6 +427,21 @@ export class BotBrain {
     if (roleId === "sheriff") {
       const targetId = this.chooseSheriffTarget();
       if (targetId) this.engine.setNightAction(this.playerId, "check", targetId);
+      return;
+    }
+    if (roleId === "bartender") {
+      const targetId = this.chooseBartenderTarget();
+      if (targetId) this.engine.setNightAction(this.playerId, "drink", targetId);
+      return;
+    }
+    if (roleId === "musician") {
+      const targetId = this.chooseMusicianTarget();
+      if (targetId) this.engine.setNightAction(this.playerId, "block", targetId);
+      return;
+    }
+    if (roleId === "puppeteer" && !this.player.puppetTargetId) {
+      const targetId = this.choosePuppetTarget();
+      if (targetId) this.engine.setNightAction(this.playerId, "puppet", targetId);
     }
   }
 
@@ -406,7 +453,7 @@ export class BotBrain {
     const threat = this.threatOf(targetId);
     if (threat >= 3 || this.engine.day >= 3 || this.rng() < this.traits.logic * 0.5) {
       const result = this.engine.setNightAction(this.playerId, "contract", targetId);
-      if (result.ok) {
+      if (result.ok && this.engine.config?.mode !== "secret") {
         this.scheduleChat({
           text: pickBotLine("mafia-night", this.style, this.varsFor(targetId), this.rng),
           intent: "mafia-night",
@@ -420,8 +467,9 @@ export class BotBrain {
   }
 
   chooseMafiaTarget(contract = false) {
+    const secret = this.engine.config?.mode === "secret";
     const candidates = this.engine.players.filter(
-      (player) => player.alive && player.team !== "mafia" && player.id !== this.playerId,
+      (player) => player.alive && player.id !== this.playerId && (secret || player.team !== "mafia"),
     );
     if (!candidates.length) return null;
 
@@ -485,6 +533,96 @@ export class BotBrain {
       score: this.suspicionOf(target.id) + this.threatOf(target.id) * 0.4 + this.rng() * 2,
     }));
     return pickByScore(scored, { rng: this.rng, logic: this.traits.logic });
+  }
+
+  chooseBartenderTarget() {
+    const candidates = this.engine.players.filter(
+      (target) => target.alive && target.id !== this.playerId,
+    );
+    if (!candidates.length) return null;
+    const scored = candidates.map((target) => ({
+      id: target.id,
+      score: this.threatOf(target.id) * 0.8 + (this.claimsOf(target.id) ? 1.5 : 0) + this.rng() * 2.4,
+    }));
+    return pickByScore(scored, { rng: this.rng, logic: this.traits.logic });
+  }
+
+  chooseMusicianTarget() {
+    const candidates = this.engine.players.filter(
+      (target) => target.alive && target.id !== this.playerId,
+    );
+    if (!candidates.length) return null;
+    const scored = candidates.map((target) => {
+      let score = this.suspicionOf(target.id) * 0.6 + this.threatOf(target.id) * 0.5 + this.rng() * 2.2;
+      const claim = this.claimsOf(target.id);
+      if (claim?.role === "sheriff") score += 2.4;
+      if (claim?.role === "doctor") score += 1.2;
+      return { id: target.id, score };
+    });
+    return pickByScore(scored, { rng: this.rng, logic: this.traits.logic });
+  }
+
+  choosePuppetTarget() {
+    const candidates = this.engine.players.filter(
+      (target) => target.alive && target.id !== this.playerId,
+    );
+    if (!candidates.length) return null;
+    const scored = candidates.map((target) => {
+      const claim = this.claimsOf(target.id);
+      let score = this.threatOf(target.id) * 0.5 + this.rng() * 2.6;
+      if (claim?.role === "sheriff") score += 2;
+      if (claim?.role === "doctor") score += 1.2;
+      // A loud town voice tends to survive longer than a quiet one.
+      const speeches = this.engine.chat.filter((message) => message.playerId === target.id).length;
+      score += Math.min(1.6, speeches * 0.06);
+      return { id: target.id, score };
+    });
+    return pickByScore(scored, { rng: this.rng, logic: this.traits.logic });
+  }
+
+  tickDayAction(now) {
+    const roleId = this.roleId;
+    if (roleId !== "spy" && roleId !== "judge") return;
+    if (this.dayActionTried) return;
+    if (!this.dayActionAt) {
+      this.dayActionAt = now + Math.round(7000 + this.rng() * 9000);
+    }
+    if (now < this.dayActionAt) return;
+    this.dayActionTried = true;
+
+    if (roleId === "spy") {
+      if (this.player.spyRevealDay === this.engine.day) return;
+      const candidates = this.engine.players.filter(
+        (target) => target.alive && target.id !== this.playerId,
+      );
+      if (!candidates.length) return;
+      const scored = candidates.map((target) => ({
+        id: target.id,
+        score: this.suspicionOf(target.id) + this.threatOf(target.id) * 0.4 + this.rng() * 2,
+      }));
+      const targetId = pickByScore(scored, { rng: this.rng, logic: this.traits.logic });
+      if (targetId) this.engine.setDayAction(this.playerId, "reveal", targetId);
+      return;
+    }
+
+    if (this.player.judgeUsed || this.engine.day < 2) return;
+    const candidates = this.engine.players.filter(
+      (target) => target.alive && target.id !== this.playerId,
+    );
+    if (!candidates.length) return;
+    const scored = candidates.map((target) => ({
+      id: target.id,
+      score:
+        this.suspicionOf(target.id) +
+        this.threatOf(target.id) * 0.6 +
+        this.rng() * 1.5,
+    }));
+    const targetId = pickByScore(scored, { rng: this.rng, logic: this.traits.logic });
+    if (!targetId) return;
+    // A cautious judge only acts on a strong, investigated case.
+    const confidence = this.suspicionOf(targetId) + this.threatOf(targetId) * 0.5;
+    if (confidence < 4.2 && this.rng() > 0.22) return;
+    this.engine.setDayAction(this.playerId, "judge", targetId);
   }
 
   // -----------------------------------------------------------------------
@@ -608,7 +746,7 @@ export class BotBrain {
       }
     }
 
-    if (this.isMafia) {
+    if (this.canSeeMafia) {
       // Fake a sheriff claim if someone else claimed it and the lie is worth it.
       const sheriffClaims = [...this.memory.claims.entries()].filter(
         ([id, claim]) => claim.role === "sheriff" && id !== this.playerId,
@@ -720,11 +858,17 @@ export class BotBrain {
 
   tickVoting(now) {
     if (this.voted) return;
-    if (!this.voteAt) this.voteAt = now + Math.round(1800 + this.rng() * 5500);
+    if (!this.voteAt) {
+      // Bots do not pounce: they listen to the discussion and only then commit,
+      // somewhere between six and eighteen seconds into the vote. If the phase
+      // is short, they still leave themselves a couple of seconds of margin.
+      const delay = Math.round(6000 + this.rng() * 12_000);
+      const latest = this.engine.phaseEndsAt ? this.engine.phaseEndsAt - 3000 : 0;
+      this.voteAt = latest ? Math.min(now + delay, Math.max(now + 2500, latest)) : now + delay;
+    }
     if (now < this.voteAt) return;
     this.voted = true;
-    let targetId = this.pickVote();
-    if (targetId === "skip") targetId = "skip";
+    const targetId = this.pickVote();
     const result = this.engine.castVote(this.playerId, targetId || "skip");
     if (!result.ok) this.voted = true;
   }
@@ -735,7 +879,7 @@ export class BotBrain {
     );
     if (!candidates.length) return "skip";
 
-    const mafia = this.isMafia;
+    const mafia = this.canSeeMafia;
     const scored = candidates.map((target) => {
       let score = this.suspicionOf(target.id) + this.rng() * 0.8;
       if (mafia) {
@@ -760,7 +904,7 @@ export class BotBrain {
   }
 
   choosePublicTarget() {
-    if (this.isMafia) {
+    if (this.canSeeMafia) {
       const candidates = this.engine.players.filter(
         (player) =>
           player.alive &&
@@ -800,8 +944,10 @@ export class BotBrain {
   onChat(message, now = this.engine.clock()) {
     if (!this.player?.isBot || !message) return;
     if (message.playerId === this.playerId) return;
+    // A drunk tongue is noise, not evidence. Bots never decode it.
+    if (message.drunk) return;
     if (message.channel === "dead" && this.player.alive) return;
-    if (message.channel === "mafia" && this.team !== "mafia") return;
+    if (message.channel === "mafia" && !this.canSeeMafia) return;
     if (!this.player.alive) return;
 
     const speaker = this.engine.getPlayer(message.playerId);
@@ -829,6 +975,20 @@ export class BotBrain {
       if (this.roleId === "jester") this.addSuspicion(speaker.id, 1.2);
     } else if (intent === "claim-civilian") {
       this.rememberClaim(speaker.id, "civilian");
+    } else if (intent === "claim-role" && message.quickRoleId) {
+      this.rememberClaim(speaker.id, message.quickRoleId);
+      if (message.quickRoleId === this.roleId) this.addSuspicion(speaker.id, 1.4);
+    } else if (intent === "greeting" && this.rng() < 0.4 && this.spokenThisPhase < this.maxChat) {
+      this.scheduleReply(
+        {
+          text: pickBotLine("greeting-reply", this.style, this.varsFor(speaker.id), this.rng),
+          intent: "greeting-reply",
+          targetId: speaker.id,
+          channel: "public",
+          priority: 1.1,
+        },
+        now,
+      );
     }
 
     if (message.quickId || message.intent) {
@@ -844,7 +1004,7 @@ export class BotBrain {
       }
       if (targetId === this.playerId) {
         this.pendingDefense = true;
-        this.replyAt = now + Math.round(700 + this.rng() * 1800);
+        this.replyAt = now + Math.round(2200 + this.rng() * 3000);
       }
     } else if (intent === "defend-self") {
       this.addSuspicion(speaker.id, -0.18);
@@ -887,7 +1047,7 @@ export class BotBrain {
       /мафи|веша|голос|врёшь|врешь/i.test(message.text)
     ) {
       this.pendingDefense = true;
-      this.replyAt = now + Math.round(900 + this.rng() * 1700);
+      this.replyAt = now + Math.round(2200 + this.rng() * 2800);
     }
 
     if (!message.quickId && !intent) this.handleFreeText(message, speaker, now);
@@ -1028,7 +1188,7 @@ export class BotBrain {
   scheduleReply(reply, now) {
     if (!reply?.text) return;
     this.pendingReply = reply;
-    this.replyAt = now + Math.round(500 + this.rng() * 1200);
+    this.replyAt = now + Math.round(2200 + this.rng() * 3200);
   }
 
   sendLastWords(now) {
@@ -1057,7 +1217,7 @@ export class BotBrain {
     if (!targetId || targetId === this.playerId) return -100;
     const target = this.engine.getPlayer(targetId);
     if (!target?.alive) return -100;
-    if (this.isMafia && target.team === "mafia") return -100;
+    if (this.canSeeMafia && target.team === "mafia") return -100;
     let base = this.memory.suspicion.get(targetId);
     if (base === undefined) {
       base = (stableNoise(this.playerId, targetId, "sus") - 0.5) * 0.7;
@@ -1078,9 +1238,22 @@ export class BotBrain {
     if (!targetId) return;
     const target = this.engine.getPlayer(targetId);
     if (!target) return;
-    if (this.isMafia && target.team === "mafia") return;
+    if (this.canSeeMafia && target.team === "mafia") return;
+    const now = this.engine.clock();
     const current = this.suspicionOf(targetId);
-    this.memory.suspicion.set(targetId, Math.max(-12, Math.min(20, current + delta)));
+    const lock = this.memory.opinionLock.get(targetId);
+    // A bot that has just made up its mind sticks to it for a while: incoming
+    // chat can nudge the number, but it cannot flip the sign in one sentence.
+    let applied = delta;
+    if (lock && now < lock.until) {
+      if ((delta > 0 && current < 0) || (delta < 0 && current > 0)) applied = delta * 0.15;
+      else applied = delta * 0.55;
+    }
+    const next = Math.max(-12, Math.min(20, current + applied));
+    this.memory.suspicion.set(targetId, next);
+    if (Math.abs(applied) >= 0.85) {
+      this.memory.opinionLock.set(targetId, { until: now + 12_000 + this.rng() * 8000, at: now });
+    }
   }
 
   jesterRiskOf(targetId) {
@@ -1142,7 +1315,7 @@ export class BotBrain {
   threatOf(targetId) {
     const target = this.engine.getPlayer(targetId);
     if (!target) return 0;
-    if (this.isMafia && target.team === "mafia") return -100;
+    if (this.canSeeMafia && target.team === "mafia") return -100;
     let score = this.rng() * 0.6;
     const claim = this.claimsOf(targetId);
     if (claim?.role === "sheriff") score += 4.2;

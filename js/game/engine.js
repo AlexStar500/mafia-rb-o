@@ -6,6 +6,8 @@ import {
   ROLES,
   TEAMS,
   computeRoleSetup,
+  hidesMafiaRoster,
+  isMafiaCoreRole,
   normalizeRoomConfig,
 } from "../data/roles.js";
 
@@ -43,8 +45,22 @@ const CHAT_WINDOW_MAX = 6;
 const CHAT_MIN_GAP_MS = 700;
 const CHAT_QUICK_GAP_MS = 950;
 
+const DAY_ACTION_PHASES = new Set([PHASE.DAWN, PHASE.DISCUSSION, PHASE.VOTING]);
+const DRUNK_ALPHABET = "@#$%^&*!?~";
+
 function teamOfRole(roleId) {
   return ROLES[roleId]?.team ?? "town";
+}
+
+/** A drunk tongue only produces meaningless symbols, with a random length. */
+function drunkText(length, rng = Math.random) {
+  const source = Math.max(4, Math.min(160, Math.round(Number(length) || 12)));
+  const size = Math.max(5, Math.min(48, Math.round(source * (0.65 + rng() * 0.9))));
+  let text = "";
+  for (let i = 0; i < size; i += 1) {
+    text += DRUNK_ALPHABET[Math.floor(rng() * DRUNK_ALPHABET.length)] ?? "#";
+  }
+  return text;
 }
 
 function cleanName(value, fallback = "Игрок") {
@@ -170,6 +186,13 @@ export class GameEngine {
       lastHealTarget: null,
       selfHeals: 0,
       contractUsed: false,
+      judgeUsed: false,
+      spyRevealDay: -1,
+      drunkDay: -1,
+      blockedDay: -1,
+      puppetTargetId: null,
+      puppetChosenDay: -1,
+      reveals: [],
       stats: {
         votesCast: 0,
         votesReceived: 0,
@@ -325,12 +348,17 @@ export class GameEngine {
 
     const now = this.clock();
     this.config = normalizeRoomConfig(this.config, this.players.length);
-    this.setup = computeRoleSetup(this.players.length, this.config.roles);
+    this.setup = computeRoleSetup(this.players.length, this.config.roles, this.config.mode);
     const roles = shuffle(this.setup.ids, this.rng);
 
     for (const player of this.players) {
       player.roleId = roles.pop() ?? "civilian";
       player.team = teamOfRole(player.roleId);
+      player.originalRoleId = player.roleId;
+      player.originalTeam = player.team;
+      player.originalMafia = player.team === "mafia";
+      player.zombie = false;
+      player.cures = 0;
       player.alive = true;
       player.death = null;
       player.ready = true;
@@ -340,6 +368,13 @@ export class GameEngine {
       player.lastHealTarget = null;
       player.selfHeals = 0;
       player.contractUsed = false;
+      player.judgeUsed = false;
+      player.spyRevealDay = -1;
+      player.drunkDay = -1;
+      player.blockedDay = -1;
+      player.puppetTargetId = null;
+      player.puppetChosenDay = -1;
+      player.reveals = [];
       player.stats = {
         votesCast: 0,
         votesReceived: 0,
@@ -439,9 +474,12 @@ export class GameEngine {
     if (!first) this.day += 1;
     this.night = {
       killVotes: new Map(),
-      doctor: null,
-      sheriff: null,
-      contract: null,
+      doctors: new Map(),
+      checks: new Map(),
+      contracts: new Map(),
+      drinks: new Map(),
+      blocks: new Map(),
+      puppets: new Map(),
       resolved: false,
     };
     this.votes.clear();
@@ -470,8 +508,13 @@ export class GameEngine {
     return this.players
       .filter((target) => {
         if (!target.alive) return false;
-        if (target.id === player.id) return false;
-        if (action === "kill" || action === "contract") return target.team !== "mafia";
+        if (action !== "heal" && target.id === player.id) return false;
+        if (action === "kill" || action === "contract") {
+          // In the secret mode the family does not know itself, so a mafia
+          // bullet may land on another mafia.
+          return this.config.mode === "secret" || target.team !== "mafia";
+        }
+        if (action === "check") return target.id !== player.id;
         return true;
       })
       .map((target) => target.id);
@@ -486,12 +529,16 @@ export class GameEngine {
     const role = ROLES[roleId];
     if (!role) return { ok: false, error: "Нет роли." };
     const target = targetId ? this.playerMap.get(targetId) : null;
+    const night = this.night;
+    if (!night) return { ok: false, error: "Сейчас не ночь." };
 
     if (action === "kill") {
-      if (role.team !== "mafia") return { ok: false, error: "Только мафия выбирает жертву." };
+      if (!isMafiaCoreRole(roleId)) return { ok: false, error: "Только мафия выбирает жертву." };
       if (!target || !target.alive) return { ok: false, error: "Выберите живого игрока." };
-      if (target.team === "mafia") return { ok: false, error: "Нельзя убивать своих." };
-      this.night.killVotes.set(playerId, targetId);
+      if (target.team === "mafia" && this.config.mode !== "secret") {
+        return { ok: false, error: "Нельзя убивать своих." };
+      }
+      night.killVotes.set(playerId, target.id);
       player.stats.nightActions += 1;
       this._changed("night-action");
       return { ok: true };
@@ -506,7 +553,7 @@ export class GameEngine {
       if (player.lastHealTarget === target.id) {
         return { ok: false, error: "Нельзя лечить одного и того же игрока две ночи подряд." };
       }
-      this.night.doctor = { targetId: target.id, byId: player.id };
+      night.doctors.set(playerId, target.id);
       player.stats.nightActions += 1;
       this._changed("night-action");
       return { ok: true };
@@ -516,7 +563,7 @@ export class GameEngine {
       if (roleId !== "sheriff") return { ok: false, error: "Только шериф проверяет." };
       if (!target || !target.alive) return { ok: false, error: "Выберите живого игрока." };
       if (target.id === player.id) return { ok: false, error: "Нельзя проверить себя." };
-      this.night.sheriff = { targetId: target.id, byId: player.id };
+      night.checks.set(playerId, target.id);
       player.stats.nightActions += 1;
       this._changed("night-action");
       return { ok: true };
@@ -527,8 +574,41 @@ export class GameEngine {
       if (this.day < 2) return { ok: false, error: "Контракт доступен со 2-й ночи." };
       if (player.contractUsed) return { ok: false, error: "Контракт уже использован." };
       if (!target || !target.alive) return { ok: false, error: "Выберите живого игрока." };
-      if (target.team === "mafia") return { ok: false, error: "Нельзя подписать контракт на своего." };
-      this.night.contract = { targetId: target.id, byId: player.id };
+      if (target.team === "mafia" && this.config.mode !== "secret") {
+        return { ok: false, error: "Нельзя подписать контракт на своего." };
+      }
+      night.contracts.set(playerId, target.id);
+      player.stats.nightActions += 1;
+      this._changed("night-action");
+      return { ok: true };
+    }
+
+    if (action === "drink") {
+      if (roleId !== "bartender") return { ok: false, error: "Только бармен поит гостей." };
+      if (!target || !target.alive) return { ok: false, error: "Выберите живого игрока." };
+      if (target.id === player.id) return { ok: false, error: "Себе наливать нельзя." };
+      night.drinks.set(playerId, target.id);
+      player.stats.nightActions += 1;
+      this._changed("night-action");
+      return { ok: true };
+    }
+
+    if (action === "block") {
+      if (roleId !== "musician") return { ok: false, error: "Только музыкант блокирует." };
+      if (!target || !target.alive) return { ok: false, error: "Выберите живого игрока." };
+      if (target.id === player.id) return { ok: false, error: "Себя блокировать нельзя." };
+      night.blocks.set(playerId, target.id);
+      player.stats.nightActions += 1;
+      this._changed("night-action");
+      return { ok: true };
+    }
+
+    if (action === "puppet") {
+      if (roleId !== "puppeteer") return { ok: false, error: "Только кукловод выбирает марионетку." };
+      if (player.puppetTargetId) return { ok: false, error: "Марионетка уже выбрана." };
+      if (!target || !target.alive) return { ok: false, error: "Выберите живого игрока." };
+      if (target.id === player.id) return { ok: false, error: "Нельзя выбрать себя." };
+      night.puppets.set(playerId, target.id);
       player.stats.nightActions += 1;
       this._changed("night-action");
       return { ok: true };
@@ -542,7 +622,7 @@ export class GameEngine {
     if (!player?.alive) return null;
     const night = this.night;
     if (!night) return null;
-    if (roleId === "mafia" || roleId === "assassin") {
+    if (isMafiaCoreRole(roleId)) {
       return {
         type: "kill",
         selected: night.killVotes.get(playerId) ?? null,
@@ -552,7 +632,7 @@ export class GameEngine {
     if (roleId === "doctor") {
       return {
         type: "heal",
-        selected: night.doctor?.byId === playerId ? night.doctor.targetId : null,
+        selected: night.doctors.get(playerId) ?? null,
         options: this._nightTargetsFor(player, "heal"),
         blocked: [
           ...(player.lastHealTarget ? [player.lastHealTarget] : []),
@@ -564,8 +644,30 @@ export class GameEngine {
     if (roleId === "sheriff") {
       return {
         type: "check",
-        selected: night.sheriff?.byId === playerId ? night.sheriff.targetId : null,
+        selected: night.checks.get(playerId) ?? null,
         options: this._nightTargetsFor(player, "check"),
+      };
+    }
+    if (roleId === "bartender") {
+      return {
+        type: "drink",
+        selected: night.drinks.get(playerId) ?? null,
+        options: this._nightTargetsFor(player, "drink"),
+      };
+    }
+    if (roleId === "musician") {
+      return {
+        type: "block",
+        selected: night.blocks.get(playerId) ?? null,
+        options: this._nightTargetsFor(player, "block"),
+      };
+    }
+    if (roleId === "puppeteer") {
+      return {
+        type: "puppet",
+        selected: night.puppets.get(playerId) ?? null,
+        options: player.puppetTargetId ? [] : this._nightTargetsFor(player, "puppet"),
+        chosenTargetId: player.puppetTargetId,
       };
     }
     return null;
@@ -574,10 +676,24 @@ export class GameEngine {
   _resolveNight(now) {
     if (!this.night || this.night.resolved) return;
     this.night.resolved = true;
+    const night = this.night;
 
-    const killVotes = [...this.night.killVotes.entries()].filter(([voterId]) => {
+    // Musician blocks apply to every other action and to the coming day.
+    const blockedIds = new Set();
+    for (const [musicianId, targetId] of night.blocks) {
+      const musician = this.playerMap.get(musicianId);
+      if (musician?.alive && musician.roleId === "musician") blockedIds.add(targetId);
+    }
+    for (const id of blockedIds) {
+      const player = this.playerMap.get(id);
+      if (!player?.alive) continue;
+      player.blockedDay = this.day;
+      this._addNote(player, "Музыкант играл всю ночь. Сегодня вы не голосуете и не действуете.", "warn");
+    }
+
+    const killVotes = [...night.killVotes.entries()].filter(([voterId]) => {
       const voter = this.playerMap.get(voterId);
-      return voter?.alive && voter.team === "mafia";
+      return voter?.alive && isMafiaCoreRole(voter.roleId) && !blockedIds.has(voterId);
     });
     const tally = new Map();
     for (const [, targetId] of killVotes) {
@@ -590,83 +706,148 @@ export class GameEngine {
       targetId = pickOne(top, this.rng);
     }
 
-    const doctorAction = this.night.doctor;
-    const doctor = doctorAction ? this.playerMap.get(doctorAction.byId) : null;
-    const healedId = doctorAction?.targetId ?? null;
-    const healed = Boolean(healedId && targetId === healedId);
-
-    const sheriffAction = this.night.sheriff;
-    const sheriff = sheriffAction ? this.playerMap.get(sheriffAction.byId) : null;
-    if (sheriff && sheriffAction?.targetId) {
-      const checked = this.playerMap.get(sheriffAction.targetId);
-      if (checked) {
-        const result = checked.team === "mafia" ? "mafia" : "clean";
-        sheriff.investigations.push({ targetId: checked.id, name: checked.name, result, day: this.day });
-        this._addNote(
-          sheriff,
-          result === "mafia"
-            ? `Проверка: ${checked.name} — мафия.`
-            : `Проверка: ${checked.name} — не мафия.`,
-          result === "mafia" ? "danger" : "town",
-        );
-      }
-    }
-
-    let contractTargetId = null;
-    if (this.night.contract) {
-      const assassin = this.playerMap.get(this.night.contract.byId);
-      const target = this.playerMap.get(this.night.contract.targetId);
-      if (assassin && target?.alive && assassin.alive && this.day >= 2 && !assassin.contractUsed) {
-        assassin.contractUsed = true;
-        contractTargetId = target.id;
-        this._addNote(assassin, `Контракт выполнен: ${target.name}.`, "danger");
-      }
-    }
-
-    if (doctor && healedId) {
+    // Doctors may heal several targets at once when the city has several docs.
+    const healedTargets = new Set();
+    const healActions = [];
+    for (const [doctorId, healedId] of night.doctors) {
+      const doctor = this.playerMap.get(doctorId);
+      if (!doctor?.alive || doctor.roleId !== "doctor" || blockedIds.has(doctorId)) continue;
       const healedPlayer = this.playerMap.get(healedId);
-      if (healedPlayer) {
-        doctor.lastHealTarget = healedId;
-        if (healedId === doctor.id) doctor.selfHeals += 1;
-        const contractKill = contractTargetId === healedId;
-        const mafiaKill = targetId === healedId && healed;
-        if (contractKill) {
-          this._addNote(doctor, `${healedPlayer.name} погиб: контракт ассасина сильнее лечения.`, "danger");
-        } else if (mafiaKill) {
-          this._addNote(doctor, `Вы спасли ${healedPlayer.name} от мафии.`, "town");
-        } else {
-          this._addNote(doctor, `${healedPlayer.name} этой ночью не нуждался в помощи.`, "muted");
+      if (!healedPlayer?.alive) continue;
+      doctor.lastHealTarget = healedId;
+      if (healedId === doctor.id) doctor.selfHeals += 1;
+      healedTargets.add(healedId);
+      healActions.push({ doctor, healedPlayer });
+    }
+
+    for (const [sheriffId, checkedId] of night.checks) {
+      const sheriff = this.playerMap.get(sheriffId);
+      if (!sheriff?.alive || sheriff.roleId !== "sheriff" || blockedIds.has(sheriffId)) continue;
+      const checked = this.playerMap.get(checkedId);
+      if (!checked?.alive) continue;
+      const result = checked.team === "mafia" ? "mafia" : "clean";
+      sheriff.investigations.push({ targetId: checked.id, name: checked.name, result, day: this.day });
+      this._addNote(
+        sheriff,
+        result === "mafia"
+          ? `Проверка: ${checked.name} — мафия.`
+          : `Проверка: ${checked.name} — не мафия.`,
+        result === "mafia" ? "danger" : "town",
+      );
+    }
+
+    const contractTargets = new Set();
+    const contractAssassins = [];
+    for (const [assassinId, victimId] of night.contracts) {
+      const assassin = this.playerMap.get(assassinId);
+      const victim = this.playerMap.get(victimId);
+      if (!assassin?.alive || assassin.roleId !== "assassin" || blockedIds.has(assassinId)) continue;
+      if (assassin.contractUsed || this.day < 2 || !victim?.alive) continue;
+      assassin.contractUsed = true;
+      contractTargets.add(victimId);
+      contractAssassins.push(assassin);
+      this._addNote(assassin, `Контракт выполнен: ${victim.name}.`, "danger");
+    }
+
+    for (const [bartenderId, guestId] of night.drinks) {
+      const bartender = this.playerMap.get(bartenderId);
+      const guest = this.playerMap.get(guestId);
+      if (!bartender?.alive || bartender.roleId !== "bartender" || blockedIds.has(bartenderId)) continue;
+      if (!guest?.alive) continue;
+      guest.drunkDay = this.day;
+      this._addNote(bartender, `${guest.name} напился. Завтра его слова не разобрать.`, "gold");
+    }
+
+    for (const [puppeteerId, puppetId] of night.puppets) {
+      const puppeteer = this.playerMap.get(puppeteerId);
+      const puppet = this.playerMap.get(puppetId);
+      if (!puppeteer?.alive || puppeteer.roleId !== "puppeteer" || blockedIds.has(puppeteerId)) continue;
+      if (!puppet?.alive || puppeteer.puppetTargetId) continue;
+      puppeteer.puppetTargetId = puppetId;
+      puppeteer.puppetChosenDay = this.day;
+      this._addNote(puppeteer, `Марионетка выбрана: ${puppet.name}. Её роль вы узнаете завтра.`, "neutral");
+    }
+
+    const killed = new Set();
+    const deaths = [];
+    const killOne = (id, cause) => {
+      if (!id || killed.has(id)) return;
+      const result = this._killWithTwin(id, "night", { cause });
+      for (const death of result) {
+        if (killed.has(death.id)) continue;
+        killed.add(death.id);
+        deaths.push(death);
+      }
+    };
+
+    const converted = [];
+    if (this.config.mode === "zombie") {
+      // Night kills do not kill: they turn the victim into a zombie.
+      if (targetId && !healedTargets.has(targetId) && !this._isJesterShowdown()) {
+        const victim = this.playerMap.get(targetId);
+        if (victim?.alive && victim.team !== "mafia") {
+          this._convertToZombie(victim);
+          converted.push(victim);
         }
       }
+    } else if (targetId && !healedTargets.has(targetId) && !this._isJesterShowdown()) {
+      killOne(targetId, "mafia");
+    }
+    for (const id of contractTargets) killOne(id, "assassin");
+
+    // A puppeteer who never picks a puppet within two nights fades away.
+    if (this.day >= 2) {
+      for (const puppeteer of this.players) {
+        if (!puppeteer.alive || puppeteer.roleId !== "puppeteer") continue;
+        if (puppeteer.puppetTargetId || blockedIds.has(puppeteer.id)) continue;
+        this._addLog("night", `${puppeteer.name} так и не выбрал марионетку и исчез.`, {
+          tone: "neutral",
+          playerId: puppeteer.id,
+        });
+        killOne(puppeteer.id, "puppeteer");
+      }
     }
 
-    const killedIds = new Set();
-    if (targetId && !healed) killedIds.add(targetId);
-    if (contractTargetId) killedIds.add(contractTargetId);
-
-    const deaths = [];
-    for (const id of killedIds) {
-      const player = this.playerMap.get(id);
-      if (!player?.alive) continue;
-      const cause = contractTargetId === id ? "assassin" : "mafia";
-      this._killPlayer(id, "night", { cause, byId: null });
-      deaths.push({ id, name: player.name, roleId: player.roleId, cause });
+    // Doctor feedback is written after the kills are known.
+    for (const { doctor, healedPlayer } of healActions) {
+      if (contractTargets.has(healedPlayer.id)) {
+        this._addNote(doctor, `${healedPlayer.name} погиб: контракт ассасина сильнее лечения.`, "danger");
+      } else if (targetId === healedPlayer.id) {
+        this._addNote(
+          doctor,
+          this.config.mode === "zombie"
+            ? `Вы защитили ${healedPlayer.name} от обращения.`
+            : `Вы спасли ${healedPlayer.name} от мафии.`,
+          "town",
+        );
+      } else {
+        this._addNote(doctor, `${healedPlayer.name} этой ночью не нуждался в помощи.`, "muted");
+      }
     }
 
-    if (killedIds.size === 0) {
+    if (this.config.mode === "zombie") {
+      // Names never surface: the city only learns that something changed.
+      this._addLog("night", "Ночь прошла. Город не знает, кто вернулся изменённым.", { tone: "night" });
+    } else if (deaths.length === 0) {
       this._addLog("night", "Ночь прошла без жертв.", { tone: "town" });
     } else {
       const names = deaths.map((death) => death.name).join(", ");
       this._addLog("night", `Ночью погибли: ${names}.`, { tone: "danger" });
     }
 
-    const mafiaIds = this._aliveMafiaIds();
-    if (mafiaIds.length && deaths.length) {
+    const mafiaIds = this.players.filter((p) => p.alive && isMafiaCoreRole(p.roleId)).map((p) => p.id);
+    if (mafiaIds.length && this.config.mode === "zombie") {
+      const names = converted.map((player) => player.name).join(", ");
       for (const id of mafiaIds) {
         const mafiaPlayer = this.playerMap.get(id);
-        if (mafiaPlayer) {
-          this._addNote(mafiaPlayer, `Устранён: ${deaths.map((death) => death.name).join(", ")}.`, "danger");
-        }
+        if (!mafiaPlayer) continue;
+        if (names) this._addNote(mafiaPlayer, `Обращены в зомби: ${names}.`, "danger");
+        else this._addNote(mafiaPlayer, "Этой ночью никто не обратился.", "muted");
+      }
+    } else if (mafiaIds.length && deaths.length) {
+      for (const id of mafiaIds) {
+        const mafiaPlayer = this.playerMap.get(id);
+        if (mafiaPlayer) this._addNote(mafiaPlayer, `Устранён: ${deaths.map((death) => death.name).join(", ")}.`, "danger");
       }
     } else if (mafiaIds.length) {
       for (const id of mafiaIds) {
@@ -677,14 +858,98 @@ export class GameEngine {
 
     this.lastNight = {
       day: this.day,
-      deaths,
-      saved: Boolean(targetId && healed && contractTargetId !== targetId),
+      deaths: this.config.mode === "zombie" ? [] : deaths,
+      converted: this.config.mode === "zombie" ? converted.length : 0,
+      zombie: this.config.mode === "zombie",
+      saved: Boolean(targetId && healedTargets.has(targetId) && !contractTargets.has(targetId)),
+      blocked: [...blockedIds],
+      drunk: [...night.drinks.values()],
       at: now,
     };
 
     if (this._checkVictory(now)) return;
     this._setPhase(PHASE.DAWN, PHASE_DURATIONS.dawn, "dawn", now);
     this._addLog("phase", `День ${this.day}. Город просыпается.`, { tone: "gold" });
+  }
+
+  /**
+   * Judge / spy / any daytime ability. Canonical targets are resolved on the
+   * host, so a guest can never invent a role or a verdict.
+   */
+  setDayAction(playerId, action, targetId) {
+    if (!DAY_ACTION_PHASES.has(this.phase)) return { ok: false, error: "Сейчас нельзя действовать днём." };
+    const player = this.playerMap.get(playerId);
+    if (!player?.alive) return { ok: false, error: "Мёртвые не действуют." };
+    if (player.muted) return { ok: false, error: "Вы заглушены." };
+    if (player.blockedDay === this.day) return { ok: false, error: "Музыкант не даёт вам действовать сегодня." };
+    const target = targetId ? this.playerMap.get(targetId) : null;
+
+    if (action === "reveal") {
+      if (player.roleId !== "spy") return { ok: false, error: "Только шпион узнаёт роли." };
+      if (player.spyRevealDay === this.day) return { ok: false, error: "Сегодня вы уже узнали роль." };
+      if (!target?.alive || target.id === player.id) return { ok: false, error: "Выберите другого живого игрока." };
+      const role = ROLES[target.roleId];
+      if (!role) return { ok: false, error: "Роль цели неизвестна." };
+      player.spyRevealDay = this.day;
+      const reveal = {
+        targetId: target.id,
+        name: target.name,
+        roleId: target.roleId,
+        roleName: role.name,
+        team: target.team,
+        day: this.day,
+      };
+      player.reveals.push(reveal);
+      if (player.reveals.length > 12) player.reveals.splice(0, player.reveals.length - 12);
+      this._addNote(player, `Шпионаж: ${target.name} — ${role.name}.`, "gold");
+      this._changed("day-action");
+      return { ok: true, reveal };
+    }
+
+    if (action === "cure") {
+      if (this.config.mode !== "zombie") return { ok: false, error: "Лечение зомби доступно только в режиме «Зомби»." };
+      if (player.roleId !== "doctor") return { ok: false, error: "Только доктор лечит зомби." };
+      if (player.cures >= 3) return { ok: false, error: "Доктор уже истратил три дневных лечения." };
+      if (!target?.alive || !target.zombie) return { ok: false, error: "Выберите живого зомби." };
+      player.cures += 1;
+      this._cureZombie(player, target);
+      this._addLog(
+        "day",
+        `Доктор ${player.name} вернул ${target.name} к жизни. Зомби больше нет.`,
+        { tone: "town", playerId: target.id },
+      );
+      this._changed("day-action");
+      const ended = this._checkVictory(this.clock());
+      return { ok: true, cured: true, targetId: target.id, ended };
+    }
+
+    if (action === "judge") {
+      if (player.roleId !== "judge") return { ok: false, error: "Только судья выносит приговор." };
+      if (player.judgeUsed) return { ok: false, error: "Приговор уже вынесен." };
+      if (!target?.alive || target.id === player.id) return { ok: false, error: "Выберите другого живого игрока." };
+      player.judgeUsed = true;
+      const targetIsMafia = target.team === "mafia";
+      const victim = targetIsMafia ? target : player;
+      const deaths = this._killWithTwin(victim.id, "day", { cause: "judge", byId: player.id });
+      this._addLog(
+        "day",
+        targetIsMafia
+          ? `Судья вынес приговор: ${target.name} — мафия. Приговор исполнен.`
+          : `Судья ошибся: ${target.name} не мафия. Судья ${player.name} погиб.`,
+        { tone: targetIsMafia ? "town" : "danger", playerId: victim.id },
+      );
+      this._changed("day-action");
+      const ended = this._checkVictory(this.clock());
+      return {
+        ok: true,
+        hit: targetIsMafia,
+        victimId: victim.id,
+        deaths: deaths.map((death) => death.id),
+        ended,
+      };
+    }
+
+    return { ok: false, error: "Неизвестное дневное действие." };
   }
 
   // -----------------------------------------------------------------------
@@ -695,6 +960,12 @@ export class GameEngine {
     if (this.phase !== PHASE.VOTING) return { ok: false, error: "Сейчас не голосование." };
     const player = this.playerMap.get(playerId);
     if (!player?.alive) return { ok: false, error: "Мёртвые не голосуют." };
+    if (player.blockedDay === this.day) {
+      return { ok: false, error: "Музыкант не даёт вам голосовать сегодня." };
+    }
+    if (player.drunkDay === this.day) {
+      return { ok: false, error: "Вы слишком пьяны, чтобы голосовать." };
+    }
     if (this.votes.has(playerId)) return { ok: false, error: "Голос уже учтён." };
     if (targetId !== "skip") {
       const target = this.playerMap.get(targetId);
@@ -718,6 +989,39 @@ export class GameEngine {
 
   _resolveVoting(now) {
     if (this.phase !== PHASE.VOTING) return;
+    if (this._isJesterShowdown()) {
+      const jester = this.alivePlayers.find((player) => player.roleId === "jester");
+      const mafia = this.alivePlayers.find((player) => player.team === "mafia");
+      const mafiaVote = this.votes.get(mafia.id);
+      const jesterVote = this.votes.get(jester.id);
+      const mafiaCanVote = mafia.blockedDay !== this.day && mafia.drunkDay !== this.day;
+      let team = "mafia";
+      let winnerId = mafia.id;
+      let reason = "jester-skip";
+      if (mafiaVote === jester.id) {
+        team = "neutral";
+        winnerId = jester.id;
+        reason = "jester-voted";
+      } else if (jesterVote === mafia.id || !mafiaCanVote) {
+        team = "town";
+        winnerId = null;
+        reason = "jester-hanged-mafia";
+      }
+      this._addLog(
+        "vote",
+        reason === "jester-voted"
+          ? `Мафия проголосовала против шута. ${jester.name} получает свою петлю.`
+          : reason === "jester-hanged-mafia"
+            ? `Шут перехитрил мафию: город забирает победу.`
+            : `Мафия переждала голосование и добила шута ночью.`,
+        { tone: reason === "jester-voted" ? "neutral" : "danger" },
+      );
+      this.endGame(team, {
+        reason,
+        ...(team === "neutral" ? { playerId: winnerId, roleId: "jester" } : {}),
+      });
+      return;
+    }
     const tally = new Map();
     let skipped = 0;
     for (const [voterId, targetId] of this.votes) {
@@ -770,6 +1074,18 @@ export class GameEngine {
         this.endGame("neutral", { reason: "jester", playerId: eliminatedId, roleId: "jester" });
         return;
       }
+      if (eliminated.roleId === "twin") {
+        // The surviving twin wins the moment the other is hanged. A judge's
+        // verdict is the exception and is resolved before this point.
+        const survivor = this.players.find(
+          (player) => player.roleId === "twin" && player.id !== eliminatedId && player.alive,
+        );
+        if (survivor) {
+          this._addLog("vote", `Второй близнец, ${survivor.name}, празднует победу.`, { tone: "neutral", playerId: survivor.id });
+          this.endGame("neutral", { reason: "twin", playerId: survivor.id, roleId: "twin" });
+          return;
+        }
+      }
       if (this._checkVictory(now)) return;
       this.lastWordsPlayerId = eliminatedId;
       this.lastWordsSpoken = false;
@@ -788,6 +1104,15 @@ export class GameEngine {
   // Victory
   // -----------------------------------------------------------------------
 
+  /** Final two: one mafia killer and the jester. The vote decides everything. */
+  _isJesterShowdown() {
+    const alive = this.alivePlayers;
+    if (alive.length !== 2) return false;
+    const jester = alive.find((player) => player.roleId === "jester");
+    const mafia = alive.find((player) => player.team === "mafia");
+    return Boolean(jester && mafia);
+  }
+
   _checkVictory(now = this.clock()) {
     if (this.phase === PHASE.ENDED) return true;
     const alive = this.alivePlayers;
@@ -802,10 +1127,28 @@ export class GameEngine {
       this.endGame("town", { reason: "mafia-eliminated" });
       return true;
     }
+    if (this.config.mode === "zombie") {
+      // The city wins only by clearing every zombie; the mafia wins only when
+      // the whole living city has turned. Parity alone means nothing.
+      if (others === 0) {
+        const originals = this.players.filter((player) => player.originalMafia);
+        if (!originals.length) {
+          this.endGame("none", { reason: "zombie-no-originals" });
+        } else {
+          this.endGame("mafia", {
+            reason: "zombie-apocalypse",
+            winnerIds: originals.map((player) => player.id),
+          });
+        }
+        return true;
+      }
+      return false;
+    }
     if (others === 0) {
       this.endGame("mafia", { reason: "last-survivor" });
       return true;
     }
+    if (this._isJesterShowdown()) return false;
     if (mafia >= others) {
       this.endGame("mafia", { reason: "parity" });
       return true;
@@ -816,21 +1159,51 @@ export class GameEngine {
   endGame(team, meta = {}) {
     if (this.phase === PHASE.ENDED) return;
     const now = this.clock();
-    const winnerIds =
-      team === "neutral"
+    const baseWinnerIds = Array.isArray(meta.winnerIds)
+      ? meta.winnerIds.filter(Boolean)
+      : team === "neutral"
         ? [meta.playerId].filter(Boolean)
         : this.players.filter((player) => player.team === team).map((player) => player.id);
+    const winnerIds = [...new Set(baseWinnerIds)];
 
+    // A puppeteer wins together with the team (or personal goal) of its puppet.
+    const coWinners = [];
+    if (team !== "none") {
+      for (const player of this.players) {
+        if (player.roleId !== "puppeteer" || !player.puppetTargetId) continue;
+        if (!winnerIds.includes(player.puppetTargetId)) continue;
+        if (winnerIds.includes(player.id)) continue;
+        winnerIds.push(player.id);
+        const puppet = this.playerMap.get(player.puppetTargetId);
+        coWinners.push({
+          id: player.id,
+          name: player.name,
+          roleId: player.roleId,
+          targetId: player.puppetTargetId,
+          targetName: puppet?.name ?? "",
+        });
+      }
+    }
+
+    const neutralTitle =
+      meta.roleId === "jester"
+        ? "Шут победил"
+        : meta.roleId === "twin"
+          ? "Близнец победил"
+          : "Нейтрал победил";
     const titles = {
       town: "Город победил",
       mafia: "Мафия победила",
-      neutral: "Шут победил",
+      neutral: neutralTitle,
       none: "Никто не победил",
     };
     const subtitles = {
       town: "Улицы снова принадлежат людям. На этот раз.",
       mafia: "Город затих. Навсегда.",
-      neutral: "Город повесил того, кто этого и хотел.",
+      neutral:
+        meta.roleId === "twin"
+          ? "Один близнец ушёл. Второй забрал всё."
+          : "Город повесил того, кто этого и хотел.",
       none: "Все ушли в ночь. История осталась без героя.",
     };
 
@@ -843,6 +1216,7 @@ export class GameEngine {
       roleId: meta.roleId ?? null,
       playerId: meta.playerId ?? null,
       winnerIds,
+      coWinners,
       endedAt: now,
       mvpId: null,
     };
@@ -872,7 +1246,10 @@ export class GameEngine {
         if (player.roleId === "assassin" && player.contractUsed) score += 2;
       }
       if (player.roleId === "sheriff") score += player.investigations.length * 0.4;
+      if (player.roleId === "spy") score += player.reveals.length * 0.5;
       if (player.roleId === "jester" && team === "neutral" && player.id === jesterId) score += 12;
+      if (player.roleId === "twin" && team === "neutral" && player.id === jesterId) score += 12;
+      if (player.roleId === "puppeteer" && winnerIds.includes(player.id)) score += 2.5;
       score += Math.min(2, player.stats.messages * 0.04);
       score += player.death ? 0 : 0.3;
       if (score > bestScore) {
@@ -927,6 +1304,13 @@ export class GameEngine {
       targetId = target?.id ?? null;
     }
 
+    let quickRoleId = null;
+    if (quick?.needsRole) {
+      const roleId = typeof meta.quickRoleId === "string" ? meta.quickRoleId : "";
+      if (!ROLES[roleId]) return { ok: false, error: "Выберите роль для этой фразы." };
+      quickRoleId = roleId;
+    }
+
     if (this.phase === PHASE.LAST_WORDS) {
       if (channel === "public") {
         if (player.id !== this.lastWordsPlayerId) return { ok: false, error: "Сейчас говорит только повешенный." };
@@ -934,7 +1318,9 @@ export class GameEngine {
       }
     }
 
-    const canonical = quick ? quickText(quick, this.playerMap.get(targetId)?.name) : sanitizeChat(text);
+    const canonical = quick
+      ? quickText(quick, this.playerMap.get(targetId)?.name, ROLES[quickRoleId]?.name)
+      : sanitizeChat(text);
     if (!canonical) return { ok: false, error: "Пустое сообщение." };
     if (canonical.length > 160) return { ok: false, error: "Слишком длинное сообщение." };
 
@@ -960,6 +1346,8 @@ export class GameEngine {
       player._recentChats = [...recent, now];
     }
 
+    const drunk = player.alive && player.drunkDay === this.day;
+    const spoken = drunk ? drunkText(canonical.length, this.rng) : canonical;
     const message = {
       id: `m_${++this.chatSeq}`,
       seq: this.chatSeq,
@@ -970,10 +1358,12 @@ export class GameEngine {
       name: player.name,
       color: player.color,
       channel,
-      text: canonical,
-      quickId: quick?.id ?? null,
-      intent: quick?.intent ?? (typeof meta.intent === "string" ? meta.intent.slice(0, 30) : null),
-      targetId,
+      text: spoken,
+      quickId: drunk ? null : (quick?.id ?? null),
+      quickRoleId: drunk ? null : quickRoleId,
+      intent: drunk ? "drunk" : (quick?.intent ?? (typeof meta.intent === "string" ? meta.intent.slice(0, 30) : null)),
+      targetId: drunk ? null : targetId,
+      drunk,
       roleId: this.phase === PHASE.ENDED ? player.roleId : null,
     };
     if (this.phase === PHASE.LAST_WORDS && channel === "public") {
@@ -995,6 +1385,9 @@ export class GameEngine {
   _resolveChannel(player, requested) {
     let channel = requested;
     if (channel === "mafia") {
+      if (this.config.mode === "secret") {
+        return { ok: false, error: "В режиме «Тайная Мафия» закрытого чата нет." };
+      }
       if (player.team !== "mafia") return { ok: false, error: "Это закрытый чат мафии." };
       if (!player.alive) return { ok: false, error: "Мёртвые не пишут в чат мафии." };
       if (this.phase !== PHASE.NIGHT) return { ok: false, error: "Мафия говорит только ночью." };
@@ -1018,13 +1411,30 @@ export class GameEngine {
 
   _canSeeChat(message, viewer, spectator) {
     if (message.channel === "public") return true;
+    // A player hanged by vote keeps the public room until their last word is
+    // spoken. Only then do the dead and mafia feeds open up.
+    if (
+      viewer &&
+      !viewer.alive &&
+      this.phase === PHASE.LAST_WORDS &&
+      viewer.id === this.lastWordsPlayerId &&
+      !this.lastWordsSpoken
+    ) {
+      return false;
+    }
     if (message.channel === "dead") return spectator || Boolean(viewer && !viewer.alive);
     if (message.channel === "mafia") {
+      if (this.config.mode === "secret") return spectator;
       if (spectator) return true;
       // The dead watch the living: they keep the mafia feed as a ghost, but
       // still cannot write to it.
       if (viewer && !viewer.alive) return true;
-      return Boolean(viewer && viewer.alive && viewer.team === "mafia");
+      return Boolean(
+        viewer &&
+          viewer.alive &&
+          viewer.team === "mafia" &&
+          !hidesMafiaRoster(viewer.roleId),
+      );
     }
     return false;
   }
@@ -1075,6 +1485,51 @@ export class GameEngine {
     return true;
   }
 
+  /** Zombie mode: the victim survives and joins the mafia. */
+  _convertToZombie(player) {
+    if (!player?.alive || player.team === "mafia") return false;
+    player.originalRoleId = player.originalRoleId ?? player.roleId;
+    player.originalTeam = player.originalTeam ?? player.team;
+    player.zombie = true;
+    player.roleId = "mafia";
+    player.team = "mafia";
+    this._addNote(player, "Вы стали зомби. Теперь вы играете за мафию.", "danger");
+    return true;
+  }
+
+  /** Zombie mode: the doctor's daytime cure restores the original role. */
+  _cureZombie(doctor, player) {
+    if (!player?.alive || !player.zombie) return false;
+    player.zombie = false;
+    player.roleId = player.originalRoleId ?? "civilian";
+    player.team = player.originalTeam ?? teamOfRole(player.roleId);
+    player.death = null;
+    this._addNote(player, "Доктор вернул вас к жизни. Вы снова за город.", "town");
+    return true;
+  }
+
+  /**
+   * Twins are bound in death: any death except a vote drags the partner along.
+   * Returns every body so the night log and the dawn banner can show both.
+   */
+  _killWithTwin(playerId, phase, options = {}) {
+    const first = this.playerMap.get(playerId);
+    if (!first?.alive) return [];
+    const killed = [];
+    if (this._killPlayer(playerId, phase, options)) {
+      killed.push({ id: first.id, name: first.name, roleId: first.roleId, cause: options.cause ?? "unknown" });
+    }
+    if (first.roleId === "twin" && options.cause !== "twin") {
+      const partner = this.players.find(
+        (player) => player.roleId === "twin" && player.id !== first.id && player.alive,
+      );
+      if (partner && this._killPlayer(partner.id, phase, { ...options, cause: "twin", byId: first.id })) {
+        killed.push({ id: partner.id, name: partner.name, roleId: partner.roleId, cause: "twin" });
+      }
+    }
+    return killed;
+  }
+
   // -----------------------------------------------------------------------
   // Rematch / teardown
   // -----------------------------------------------------------------------
@@ -1109,11 +1564,23 @@ export class GameEngine {
       player.death = null;
       player.roleId = null;
       player.team = null;
+      player.originalRoleId = null;
+      player.originalTeam = null;
+      player.originalMafia = false;
+      player.zombie = false;
+      player.cures = 0;
       player.notes = [];
       player.investigations = [];
       player.lastHealTarget = null;
       player.selfHeals = 0;
       player.contractUsed = false;
+      player.judgeUsed = false;
+      player.spyRevealDay = -1;
+      player.drunkDay = -1;
+      player.blockedDay = -1;
+      player.puppetTargetId = null;
+      player.puppetChosenDay = -1;
+      player.reveals = [];
       player.ready = player.isBot || player.isHost;
       player._lastChatAt = 0;
       player._recentChats = [];
@@ -1162,7 +1629,13 @@ export class GameEngine {
     const spectator = !viewer;
     const ended = this.phase === PHASE.ENDED;
     const revealAll = ended || spectator;
-    const mafiaViewer = Boolean(viewer && viewer.team === "mafia");
+    const secretMode = this.config.mode === "secret";
+    const mafiaViewer = Boolean(
+      viewer &&
+        viewer.team === "mafia" &&
+        !secretMode &&
+        !hidesMafiaRoster(viewer.roleId),
+    );
     const now = this.clock();
 
     const players = this.players.map((player) => {
@@ -1170,7 +1643,7 @@ export class GameEngine {
         revealAll ||
         player.id === viewer?.id ||
         (mafiaViewer && player.team === "mafia") ||
-        Boolean(this.config.revealOnDeath && !player.alive);
+        Boolean(!secretMode && this.config.revealOnDeath && !player.alive);
       return {
         id: player.id,
         name: player.name,
@@ -1186,6 +1659,10 @@ export class GameEngine {
         muted: player.muted,
         roleId: showRole ? player.roleId : null,
         team: showRole ? player.team : null,
+        zombie: Boolean(
+          player.zombie &&
+            (showRole || viewer?.roleId === "doctor" || mafiaViewer || spectator),
+        ),
         death: player.death,
         voted: this.votes.has(player.id),
         isViewer: player.id === viewerId,
@@ -1203,6 +1680,7 @@ export class GameEngine {
       night = {
         action,
         canAct,
+        blocked: Boolean(viewer && viewer.blockedDay === this.day),
         contract: {
           available:
             viewer?.roleId === "assassin" &&
@@ -1210,10 +1688,7 @@ export class GameEngine {
             this.day >= 2 &&
             !viewer.contractUsed,
           used: Boolean(viewer?.contractUsed),
-          selected:
-            viewer && this.night.contract?.byId === viewer.id
-              ? this.night.contract.targetId
-              : null,
+          selected: viewer ? this.night.contracts.get(viewer.id) ?? null : null,
         },
         mafia: mafiaViewer
           ? {
@@ -1235,6 +1710,54 @@ export class GameEngine {
       };
     }
 
+    const canDayAction = DAY_ACTION_PHASES.has(this.phase) && Boolean(viewer?.alive);
+    const dayView = viewer
+      ? {
+          canAct: canDayAction && viewer.blockedDay !== this.day,
+          blocked: viewer.blockedDay === this.day,
+          judge: {
+            available: viewer.roleId === "judge" && canDayAction && !viewer.judgeUsed && viewer.blockedDay !== this.day,
+            used: Boolean(viewer.judgeUsed),
+          },
+          spy: {
+            available:
+              viewer.roleId === "spy" &&
+              canDayAction &&
+              viewer.spyRevealDay !== this.day &&
+              viewer.blockedDay !== this.day,
+            usedToday: viewer.spyRevealDay === this.day,
+          },
+          cure: this.config.mode === "zombie" && viewer.roleId === "doctor"
+            ? {
+                available: canDayAction && viewer.cures < 3 && viewer.blockedDay !== this.day,
+                used: viewer.cures,
+                left: Math.max(0, 3 - viewer.cures),
+              }
+            : null,
+          puppet: viewer.roleId === "puppeteer"
+            ? {
+                chosen: Boolean(viewer.puppetTargetId),
+                targetId: viewer.puppetTargetId,
+                targetName: viewer.puppetTargetId ? this.playerMap.get(viewer.puppetTargetId)?.name ?? "" : "",
+                revealed: Boolean(
+                  viewer.puppetTargetId &&
+                    viewer.puppetChosenDay >= 0 &&
+                    this.day > viewer.puppetChosenDay,
+                ),
+                roleId:
+                  viewer.puppetTargetId && this.day > viewer.puppetChosenDay
+                    ? this.playerMap.get(viewer.puppetTargetId)?.roleId ?? null
+                    : null,
+                roleName:
+                  viewer.puppetTargetId && this.day > viewer.puppetChosenDay
+                    ? ROLES[this.playerMap.get(viewer.puppetTargetId)?.roleId]?.name ?? null
+                    : null,
+              }
+            : null,
+          reveals: viewer.reveals.slice(-8),
+        }
+      : null;
+
     const revealedVotes = this.phase === PHASE.VOTING ? null : this.voteResult;
     const chatMessages = this.chat.filter((message) => this._canSeeChat(message, viewer, spectator));
     const chat = withChat ? chatMessages.slice(-120) : undefined;
@@ -1248,16 +1771,24 @@ export class GameEngine {
     if (viewer) {
       if (this.phase === PHASE.LAST_WORDS) {
         chatChannels.push("public");
-        if (!viewer.alive) chatChannels.push("mafia", "dead");
-        if (viewer.id === this.lastWordsPlayerId && !this.lastWordsSpoken) chatWriteChannels.push("public");
+        const waitingForLastWord =
+          viewer.id === this.lastWordsPlayerId && !this.lastWordsSpoken;
+        if (!viewer.alive && !waitingForLastWord) {
+          chatChannels.push("dead");
+          if (!secretMode) chatChannels.push("mafia");
+        }
+        if (waitingForLastWord) chatWriteChannels.push("public");
         else if (!viewer.alive) chatWriteChannels.push("dead");
       } else if (!viewer.alive) {
         // The dead keep watching the living — public and mafia feeds — but
         // their only microphone is the dead room.
-        chatChannels.push("public", "mafia", "dead");
+        chatChannels.push("public", "dead");
+        if (!secretMode) chatChannels.push("mafia");
         chatWriteChannels.push("dead");
       } else if (this.phase === PHASE.NIGHT) {
-        if (viewer.team === "mafia") {
+        if (viewer.team === "mafia" && !secretMode) {
+          // Hidden mafia roles get the tab as a blind microphone: they can
+          // write to the family, but never read it.
           chatChannels.push("mafia");
           chatWriteChannels.push("mafia");
         }
@@ -1287,6 +1818,7 @@ export class GameEngine {
       version: this.version,
       config: {
         name: this.config.name,
+        mode: this.config.mode,
         maxPlayers: this.config.maxPlayers,
         minStart: this.config.minStart,
         public: this.config.public,
@@ -1316,6 +1848,18 @@ export class GameEngine {
             contractUsed: viewer.contractUsed,
             selfHeals: viewer.selfHeals,
             lastHealTarget: viewer.lastHealTarget,
+            judgeUsed: viewer.judgeUsed,
+            spyRevealDay: viewer.spyRevealDay,
+            cures: viewer.cures ?? 0,
+            zombie: Boolean(viewer.zombie),
+            originalRoleId: viewer.originalRoleId ?? null,
+            reveals: viewer.reveals.slice(-8),
+            drunk: Boolean(viewer.alive && viewer.drunkDay === this.day),
+            blocked: viewer.blockedDay === this.day,
+            puppetTargetId: viewer.puppetTargetId,
+            puppetTargetName: viewer.puppetTargetId
+              ? this.playerMap.get(viewer.puppetTargetId)?.name ?? ""
+              : null,
             canChat: chatWriteChannels.length > 0,
             chatChannels,
             chatWriteChannels,
@@ -1337,6 +1881,7 @@ export class GameEngine {
         bots: this.players.filter((player) => player.isBot).length,
       },
       night,
+      day: dayView,
       votes: {
         myVote: viewer ? this.votes.get(viewer.id) ?? null : null,
         votedIds: [...this.votes.keys()],
