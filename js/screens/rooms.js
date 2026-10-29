@@ -252,8 +252,10 @@ export function createRoomsScreen(ctx) {
     mount(root) {
       rootRef = root;
       const codeInput = qs("[data-rooms-code]", root);
+      const sanitizeCode = (value) =>
+        String(value ?? "").toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, "").slice(0, 6);
       codeInput.addEventListener("input", () => {
-        codeInput.value = normalizeRoomCode(codeInput.value);
+        codeInput.value = sanitizeCode(codeInput.value);
       });
       qs("[data-rooms-code-form]", root).addEventListener("submit", (event) => {
         event.preventDefault();

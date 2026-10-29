@@ -182,14 +182,20 @@ export function createJoinScreen(ctx) {
         });
       void detectSameOrigin();
 
+      // Keep partial input as the player types; only sanitize + uppercase.
+      // (normalizeRoomCode returns "" for an incomplete code, which used to
+      // wipe the field after every keystroke.)
+      const sanitizeCode = (value) =>
+        String(value ?? "").toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, "").slice(0, 6);
+
       codeInput.addEventListener("input", () => {
-        codeInput.value = normalizeRoomCode(codeInput.value);
+        codeInput.value = sanitizeCode(codeInput.value);
       });
       codeInput.addEventListener("paste", (event) => {
         const text = event.clipboardData?.getData("text") ?? "";
         if (!text) return;
         event.preventDefault();
-        codeInput.value = normalizeRoomCode(text);
+        codeInput.value = sanitizeCode(text);
       });
 
       root.addEventListener("click", (event) => {
