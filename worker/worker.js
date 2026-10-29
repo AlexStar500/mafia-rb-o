@@ -1,12 +1,16 @@
 /**
- * MAFIA · Ночной город — Cloudflare Worker relay (HTTP, no WebSocket).
+ * MAFIA · Ночной город — Cloudflare Worker + Durable Objects relay.
  *
- * Drop-in replacement for the Vercel relay (`api/index.mjs`). The static game
- * keeps talking to the exact same routes under `/api/*`; this worker serves
- * them and stores room state in Workers KV.
+ * Each room is a single Durable Object: strong consistency, no lost updates,
+ * and it scales to many rooms because rooms are isolated from one another.
+ * A small KV namespace keeps the public room index (the browse list), which is
+ * low-frequency and cheap.
  *
- * KV binding name: MAFIA_ROOMS
- * Routes:
+ * Bindings:
+ *   - MAFIA_DO    (Durable Object namespace)  — room state
+ *   - MAFIA_ROOMS (KV namespace)              — public room index
+ *
+ * Routes (client talks to /api/*):
  *   GET  /health
  *   GET  /rooms
  *   POST /rooms
@@ -17,27 +21,16 @@
  *   POST /rooms/:code/kick
  *   POST /rooms/:code/close
  *   POST /rooms/:code/leave
- *
- * NOTE ON KV: KV is *eventually consistent* and has a write budget. This
- * implementation keeps each room as a single JSON value and throttles the
- * heartbeat writes (once a minute) so a friendly game stays well under the
- * free-tier limits. Read-modify-write races are possible in theory (two
- * simultaneous writes can lose one). For a few friends it's fine; for a busy
- * public relay, switch the storage layer to Durable Objects, which gives you
- * strong consistency and WebSockets.
  */
 
 const PROTOCOL_VERSION = 2;
-const MAX_ROOMS = 300;
 const MAX_PEERS = 30;
 const MAX_EVENTS = 240;
 const ROOM_CLOSED_TTL = 60_000;
 const HOST_TTL = 180_000;
 const PEER_TTL = 150_000;
-const HEARTBEAT_WRITE_MS = 60_000; // persist hostSeen/lastSeen at most once a minute
-const ROOM_TTL = 6 * 60 * 60 * 1000; // public rooms disappear from the list after 6h
-
-const ROOM_PREFIX = "room:";
+const HEARTBEAT_SAVE_MS = 60_000;
+const INDEX_TTL = 6 * 60 * 60; // seconds — public rooms stay listed for 6h
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -91,7 +84,6 @@ function isValidAvatarId(value) {
   return value === null || (typeof value === "string" && /^[a-z0-9-]{2,24}$/.test(value));
 }
 
-// Simplified nick sanitizer (enough for a relay that never renders HTML).
 const PROFANITY_RE =
   /(?<![\p{L}])(ху[йеё]|хуя|хуйн|пизд|бля[дт]|ебан|ебат|ебал|ебуч|заеб|наеб|уеб|мраз|сука|сучк|долбо|пидор|пидар|гандон|мудак|мудил|шлюх|говн)(?![\p{L}])/giu;
 function sanitizeNick(input) {
@@ -149,13 +141,16 @@ function cleanMeta(input = {}) {
 }
 
 function publicPeer(peer) {
-  return {
-    id: peer.id,
-    name: peer.name,
-    avatar: peer.avatar,
-    color: peer.color,
-    spectate: peer.spectate,
-  };
+  return { id: peer.id, name: peer.name, avatar: peer.avatar, color: peer.color, spectate: peer.spectate };
+}
+
+async function readJson(request) {
+  try {
+    const value = await request.json();
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 function queueFor(room, id) {
@@ -187,9 +182,7 @@ function closeRoom(room, reason) {
   room.closedAt = Date.now();
   room.closeReason = textOf(reason, "Комната закрыта.").slice(0, 140);
   room.updatedAt = room.closedAt;
-  for (const id of Object.keys(room.peers)) {
-    pushEvent(room, id, { type: "closed", reason: room.closeReason });
-  }
+  for (const id of Object.keys(room.peers)) pushEvent(room, id, { type: "closed", reason: room.closeReason });
 }
 
 function removePeer(room, peerId, reason = "Игрок вышел.") {
@@ -202,10 +195,10 @@ function removePeer(room, peerId, reason = "Игрок вышел.") {
 }
 
 function pruneRoom(room, now = Date.now()) {
-  if (room.closed) return now - room.closedAt > ROOM_CLOSED_TTL ? "delete" : "keep";
+  if (room.closed) return now - room.closedAt > ROOM_CLOSED_TTL;
   if (now - room.hostSeen > HOST_TTL) {
     closeRoom(room, "Хост отключился.");
-    return "keep";
+    return false;
   }
   for (const peer of Object.values(room.peers)) {
     if (peer.kickedAt) {
@@ -214,235 +207,323 @@ function pruneRoom(room, now = Date.now()) {
     }
     if (now - peer.lastSeen > PEER_TTL) removePeer(room, peer.id);
   }
-  return "keep";
+  return false;
 }
 
-async function loadRoom(env, code) {
-  const raw = await env.MAFIA_ROOMS.get(ROOM_PREFIX + code);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
+// ---------------------------------------------------------------------------
+// Durable Object: one per room.
+// ---------------------------------------------------------------------------
+
+export class RoomObject extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.ctx = ctx;
+    this.env = env;
+    this.state = null;
   }
-}
 
-async function saveRoom(env, room) {
-  await env.MAFIA_ROOMS.put(ROOM_PREFIX + room.code, JSON.stringify(room));
-}
-
-async function readJson(request) {
-  try {
-    const value = await request.json();
-    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-// --- route handlers -------------------------------------------------------
-
-async function handleCreate(env, body) {
-  const count = (await env.MAFIA_ROOMS.list({ prefix: ROOM_PREFIX, limit: MAX_ROOMS })).keys.length;
-  if (count >= MAX_ROOMS) return json(503, { ok: false, error: "Relay переполнен. Попробуйте позже." });
-
-  const requested = String(body.code ?? "").toUpperCase();
-  let code = "";
-  if (requested) {
-    if (!isValidRoomCode(requested)) return json(400, { ok: false, error: "Неверный код комнаты." });
-    if (await loadRoom(env, requested)) return json(409, { ok: false, error: "Комната с таким кодом уже есть." });
-    code = requested;
-  } else {
-    for (let attempt = 0; attempt < 80; attempt += 1) {
-      const candidate = createRoomCode();
-      if (!(await loadRoom(env, candidate))) {
-        code = candidate;
-        break;
+  async _load() {
+    if (this.state) return this.state;
+    const raw = await this.ctx.storage.get("room");
+    if (raw) {
+      try {
+        this.state = JSON.parse(raw);
+      } catch {
+        this.state = null;
       }
     }
-    if (!code) return json(503, { ok: false, error: "Не удалось создать код комнаты." });
-  }
-
-  const hostId = relayId("h");
-  const hostToken = relayId("t");
-  const hostName = sanitizeNick(body.hostName) || "Хост";
-  const now = Date.now();
-  const room = {
-    code,
-    hostId,
-    hostToken,
-    hostName,
-    hostSeen: now,
-    meta: cleanMeta({ ...(body.meta ?? {}), code, hostId, hostName }),
-    peers: {},
-    queues: { [hostId]: { seq: 0, items: [] } },
-    createdAt: now,
-    updatedAt: now,
-    heartbeatAt: now,
-    closed: false,
-    closedAt: 0,
-    closeReason: "",
-  };
-  await saveRoom(env, room);
-  return json(200, { ok: true, code, hostId, token: hostToken, meta: room.meta });
-}
-
-async function handleJoin(env, code, room, body) {
-  if (room.closed) return json(410, { ok: false, error: "Комната закрыта." });
-  if (Object.keys(room.peers).length >= MAX_PEERS) return json(403, { ok: false, error: "Комната заполнена." });
-  const peer = {
-    id: relayId("p"),
-    token: relayId("t"),
-    name: sanitizeNick(body.name) || "Гость",
-    avatar: isValidAvatarId(body.avatar) && body.avatar ? body.avatar : null,
-    color: normalizeHexColor(body.color),
-    spectate: body.spectate === true,
-    lastSeen: Date.now(),
-    kickedAt: 0,
-  };
-  room.peers[peer.id] = peer;
-  room.updatedAt = Date.now();
-  queueFor(room, peer.id);
-  pushEvent(room, room.hostId, { type: "peer-join", peer: publicPeer(peer) });
-  await saveRoom(env, room);
-  return json(200, {
-    ok: true,
-    peerId: peer.id,
-    token: peer.token,
-    hostId: room.hostId,
-    code: room.code,
-    spectate: peer.spectate,
-    meta: room.meta,
-  });
-}
-
-async function handlePostEvent(env, room, body) {
-  const role = auth(room, body.peerId, body.token);
-  if (!role) return json(403, { ok: false, error: "Нет доступа к комнате." });
-  const payload = body.payload;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return json(400, { ok: false, error: "Некорректный payload." });
-  }
-  let encoded = "";
-  try {
-    encoded = JSON.stringify(payload);
-  } catch {
-    return json(400, { ok: false, error: "Payload не сериализуется." });
-  }
-  if (encoded.length > 30_000) return json(413, { ok: false, error: "Слишком большое сообщение." });
-
-  const now = Date.now();
-  if (role === "host") {
-    room.hostSeen = now;
-    room.updatedAt = now;
-    const to = String(body.to ?? "");
-    if (to === "*") {
-      for (const peer of Object.values(room.peers)) {
-        if (peer.kickedAt) continue;
-        pushEvent(room, peer.id, { type: "relay", from: room.hostId, payload });
-      }
-    } else if (room.peers[to]) {
-      pushEvent(room, to, { type: "relay", from: room.hostId, payload });
+    if (!this.state) {
+      this.state = {
+        code: "",
+        hostId: "",
+        hostToken: "",
+        hostName: "",
+        hostSeen: 0,
+        meta: null,
+        peers: {},
+        queues: {},
+        createdAt: 0,
+        updatedAt: 0,
+        heartbeatAt: 0,
+        closed: false,
+        closedAt: 0,
+        closeReason: "",
+      };
     }
-  } else {
-    const peer = room.peers[body.peerId];
-    if (!peer) return json(410, { ok: false, error: "Вы больше не в комнате." });
-    peer.lastSeen = now;
-    room.updatedAt = now;
-    pushEvent(room, room.hostId, { type: "relay", from: peer.id, payload });
+    return this.state;
   }
-  await saveRoom(env, room);
-  return json(200, { ok: true });
-}
 
-async function handleGetEvents(env, room, peerId, token, since) {
-  const role = auth(room, peerId, token);
-  if (!role) return json(403, { ok: false, error: "Нет доступа к комнате." });
-  const now = Date.now();
-  if (role === "host") room.hostSeen = now;
-  else {
-    const peer = room.peers[peerId];
-    if (peer) peer.lastSeen = now;
+  async _save() {
+    if (!this.state) return;
+    await this.ctx.storage.put("room", JSON.stringify(this.state));
   }
-  const queue = queueFor(room, peerId);
-  const events = queue.items.filter((event) => event.seq > since);
-  // Heartbeat is the only thing a poll changes — persist it sparingly.
-  if (now - room.heartbeatAt > HEARTBEAT_WRITE_MS) {
-    room.heartbeatAt = now;
-    await saveRoom(env, room);
+
+  async _index() {
+    const room = this.state;
+    if (!room.meta) return;
+    if (room.closed) {
+      await this.env.MAFIA_ROOMS.delete(`index:${room.code}`);
+      return;
+    }
+    await this.env.MAFIA_ROOMS.put(`index:${room.code}`, JSON.stringify({
+      code: room.code,
+      hostId: room.hostId,
+      hostName: room.hostName,
+      meta: room.meta,
+      players: Math.max(room.meta.players, Object.keys(room.peers).length + 1),
+      updatedAt: room.updatedAt,
+    }), { expirationTtl: INDEX_TTL });
   }
-  return json(200, { ok: true, events, cursor: queue.seq });
+
+  async handleInit(body) {
+    if (this.state.hostId) return json(409, { ok: false, error: "Комната с таким кодом уже есть." });
+    const now = Date.now();
+    this.state.code = String(body.code ?? "").toUpperCase();
+    this.state.hostId = relayId("h");
+    this.state.hostToken = relayId("t");
+    this.state.hostName = sanitizeNick(body.hostName) || "Хост";
+    this.state.hostSeen = now;
+    this.state.createdAt = now;
+    this.state.updatedAt = now;
+    this.state.heartbeatAt = now;
+    this.state.meta = cleanMeta({ ...(body.meta ?? {}), code: this.state.code, hostId: this.state.hostId, hostName: this.state.hostName });
+    this.state.peers = {};
+    this.state.queues = { [this.state.hostId]: { seq: 0, items: [] } };
+    await this._save();
+    await this._index();
+    return json(200, { ok: true, code: this.state.code, hostId: this.state.hostId, token: this.state.hostToken, meta: this.state.meta });
+  }
+
+  async handleJoin(body) {
+    const room = this.state;
+    if (!room.hostId) return json(404, { ok: false, error: "Комната не найдена." });
+    if (room.closed) return json(410, { ok: false, error: "Комната закрыта." });
+    if (Object.keys(room.peers).length >= MAX_PEERS) return json(403, { ok: false, error: "Комната заполнена." });
+    const peer = {
+      id: relayId("p"),
+      token: relayId("t"),
+      name: sanitizeNick(body.name) || "Гость",
+      avatar: isValidAvatarId(body.avatar) && body.avatar ? body.avatar : null,
+      color: normalizeHexColor(body.color),
+      spectate: body.spectate === true,
+      lastSeen: Date.now(),
+      kickedAt: 0,
+    };
+    room.peers[peer.id] = peer;
+    room.updatedAt = Date.now();
+    queueFor(room, peer.id);
+    pushEvent(room, room.hostId, { type: "peer-join", peer: publicPeer(peer) });
+    await this._save();
+    await this._index();
+    return json(200, {
+      ok: true,
+      peerId: peer.id,
+      token: peer.token,
+      hostId: room.hostId,
+      code: room.code,
+      spectate: peer.spectate,
+      meta: room.meta,
+    });
+  }
+
+  async handlePostEvent(body) {
+    const room = this.state;
+    const role = auth(room, body.peerId, body.token);
+    if (!role) return json(403, { ok: false, error: "Нет доступа к комнате." });
+    const payload = body.payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json(400, { ok: false, error: "Некорректный payload." });
+    let encoded = "";
+    try {
+      encoded = JSON.stringify(payload);
+    } catch {
+      return json(400, { ok: false, error: "Payload не сериализуется." });
+    }
+    if (encoded.length > 30_000) return json(413, { ok: false, error: "Слишком большое сообщение." });
+    const now = Date.now();
+    if (role === "host") {
+      room.hostSeen = now;
+      room.updatedAt = now;
+      const to = String(body.to ?? "");
+      if (to === "*") {
+        for (const peer of Object.values(room.peers)) {
+          if (peer.kickedAt) continue;
+          pushEvent(room, peer.id, { type: "relay", from: room.hostId, payload });
+        }
+      } else if (room.peers[to]) {
+        pushEvent(room, to, { type: "relay", from: room.hostId, payload });
+      }
+    } else {
+      const peer = room.peers[body.peerId];
+      if (!peer) return json(410, { ok: false, error: "Вы больше не в комнате." });
+      peer.lastSeen = now;
+      room.updatedAt = now;
+      pushEvent(room, room.hostId, { type: "relay", from: peer.id, payload });
+    }
+    await this._save();
+    return json(200, { ok: true });
+  }
+
+  async handleGetEvents(peerId, token, since) {
+    const room = this.state;
+    const role = auth(room, peerId, token);
+    if (!role) return json(403, { ok: false, error: "Нет доступа к комнате." });
+    const now = Date.now();
+    if (role === "host") room.hostSeen = now;
+    else {
+      const peer = room.peers[peerId];
+      if (peer) peer.lastSeen = now;
+    }
+    const queue = queueFor(room, peerId);
+    const events = queue.items.filter((event) => event.seq > since);
+    if (now - room.heartbeatAt > HEARTBEAT_SAVE_MS) {
+      room.heartbeatAt = now;
+      await this._save();
+    }
+    return json(200, { ok: true, events, cursor: queue.seq });
+  }
+
+  async handleMeta(body) {
+    const room = this.state;
+    if (auth(room, body.peerId, body.token) !== "host") return json(403, { ok: false, error: "Только хост меняет комнату." });
+    room.meta = cleanMeta({
+      ...room.meta,
+      ...(body.meta ?? {}),
+      code: room.code,
+      hostId: room.hostId,
+      hostName: room.hostName,
+    });
+    room.hostSeen = Date.now();
+    room.updatedAt = room.hostSeen;
+    room.meta.updatedAt = room.updatedAt;
+    await this._save();
+    await this._index();
+    return json(200, { ok: true, meta: room.meta });
+  }
+
+  async handleKick(body) {
+    const room = this.state;
+    if (auth(room, body.peerId, body.token) !== "host") return json(403, { ok: false, error: "Только хост исключает игроков." });
+    const targetId = String(body.targetId ?? "");
+    const peer = room.peers[targetId];
+    if (!peer) return json(200, { ok: true });
+    const reason = String(body.reason ?? "Вас исключили из комнаты.").slice(0, 140);
+    pushEvent(room, targetId, { type: "denied", reason });
+    peer.kickedAt = Date.now();
+    peer.lastSeen = Date.now();
+    room.updatedAt = peer.kickedAt;
+    await this._save();
+    await this._index();
+    return json(200, { ok: true });
+  }
+
+  async handleClose(body) {
+    const room = this.state;
+    if (auth(room, body.peerId, body.token) !== "host") return json(403, { ok: false, error: "Только хост закрывает комнату." });
+    closeRoom(room, body.reason ?? "Хост закрыл комнату.");
+    await this._save();
+    await this._index();
+    return json(200, { ok: true });
+  }
+
+  async handleLeave(body) {
+    const room = this.state;
+    const role = auth(room, body.peerId, body.token);
+    if (role === "guest") removePeer(room, body.peerId);
+    await this._save();
+    await this._index();
+    return json(200, { ok: true });
+  }
+
+  async fetch(request) {
+    const room = await this._load();
+    const url = new URL(request.url);
+    const parts = url.pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
+    const action = parts[parts.length - 1] ?? "";
+    const method = request.method;
+
+    if (action === "init" && method === "POST") {
+      const body = await readJson(request);
+      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
+      return this.handleInit(body);
+    }
+    if (!room.hostId) return json(404, { ok: false, error: "Комната не найдена." });
+
+    if (pruneRoom(room) && room.closed) {
+      await this.ctx.storage.delete("room");
+    }
+
+    if (action === "join" && method === "POST") {
+      const body = await readJson(request);
+      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
+      return this.handleJoin(body);
+    }
+    if (action === "events" && method === "GET") {
+      return this.handleGetEvents(
+        url.searchParams.get("peerId") ?? "",
+        url.searchParams.get("token") ?? "",
+        clampInt(url.searchParams.get("since"), 0, Number.MAX_SAFE_INTEGER, 0),
+      );
+    }
+    if (action === "events" && method === "POST") {
+      const body = await readJson(request);
+      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
+      return this.handlePostEvent(body);
+    }
+    if (action === "meta" && method === "POST") {
+      const body = await readJson(request);
+      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
+      return this.handleMeta(body);
+    }
+    if (action === "kick" && method === "POST") {
+      const body = await readJson(request);
+      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
+      return this.handleKick(body);
+    }
+    if (action === "close" && method === "POST") {
+      const body = await readJson(request);
+      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
+      return this.handleClose(body);
+    }
+    if (action === "leave" && method === "POST") {
+      const body = await readJson(request);
+      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
+      return this.handleLeave(body);
+    }
+
+    return json(404, { ok: false, error: "Not found" });
+  }
 }
 
-async function handleMeta(env, room, body) {
-  if (auth(room, body.peerId, body.token) !== "host") return json(403, { ok: false, error: "Только хост меняет комнату." });
-  room.meta = cleanMeta({
-    ...room.meta,
-    ...(body.meta ?? {}),
-    code: room.code,
-    hostId: room.hostId,
-    hostName: room.hostName,
-  });
-  room.hostSeen = Date.now();
-  room.updatedAt = room.hostSeen;
-  room.meta.updatedAt = room.updatedAt;
-  await saveRoom(env, room);
-  return json(200, { ok: true, meta: room.meta });
-}
-
-async function handleKick(env, room, body) {
-  if (auth(room, body.peerId, body.token) !== "host") return json(403, { ok: false, error: "Только хост исключает игроков." });
-  const targetId = String(body.targetId ?? "");
-  const peer = room.peers[targetId];
-  if (!peer) return json(200, { ok: true });
-  const reason = String(body.reason ?? "Вас исключили из комнаты.").slice(0, 140);
-  pushEvent(room, targetId, { type: "denied", reason });
-  peer.kickedAt = Date.now();
-  peer.lastSeen = Date.now();
-  room.updatedAt = peer.kickedAt;
-  await saveRoom(env, room);
-  return json(200, { ok: true });
-}
-
-async function handleClose(env, room, body) {
-  if (auth(room, body.peerId, body.token) !== "host") return json(403, { ok: false, error: "Только хост закрывает комнату." });
-  closeRoom(room, body.reason ?? "Хост закрыл комнату.");
-  await saveRoom(env, room);
-  return json(200, { ok: true });
-}
-
-async function handleLeave(env, room, body) {
-  const role = auth(room, body.peerId, body.token);
-  if (role === "guest") removePeer(room, body.peerId);
-  await saveRoom(env, room);
-  return json(200, { ok: true });
-}
+// ---------------------------------------------------------------------------
+// Worker: routes to the DO, keeps the public index and the create/list flows.
+// ---------------------------------------------------------------------------
 
 async function listRooms(env) {
-  const list = await env.MAFIA_ROOMS.list({ prefix: ROOM_PREFIX, limit: MAX_ROOMS });
+  const list = await env.MAFIA_ROOMS.list({ prefix: "index:" });
   const now = Date.now();
   const rooms = [];
   for (const key of list.keys) {
     const raw = await env.MAFIA_ROOMS.get(key.name);
     if (!raw) continue;
-    let room;
     try {
-      room = JSON.parse(raw);
+      const entry = JSON.parse(raw);
+      if (entry.meta && entry.meta.public && now - (entry.updatedAt || 0) < 6 * 60 * 60 * 1000) rooms.push(entry);
     } catch {
-      continue;
+      // skip broken index entry
     }
-    if (!room.meta.public || room.closed || now - room.updatedAt > ROOM_TTL) continue;
-    rooms.push({
-      ...room.meta,
-      code: room.code,
-      hostId: room.hostId,
-      hostName: room.hostName,
-      players: Math.max(room.meta.players, Object.keys(room.peers).length + 1),
-      humans: Math.max(room.meta.humans, Object.keys(room.peers).length + 1),
-      updatedAt: room.updatedAt,
-    });
   }
-  return rooms.sort((a, b) => b.updatedAt - a.updatedAt);
+  return rooms.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+async function codeIsTaken(env, code) {
+  const raw = await env.MAFIA_ROOMS.get(`index:${code}`);
+  if (!raw) return false;
+  try {
+    const entry = JSON.parse(raw);
+    return entry.code === code;
+  } catch {
+    return false;
+  }
 }
 
 export default {
@@ -456,25 +537,13 @@ export default {
     const parts = path === "/" ? [] : path.split("/").filter(Boolean);
     const method = request.method;
 
-    if (parts.length === 0) {
+    if (parts.length === 0 || (parts[0] === "health" && method === "GET")) {
       return json(200, {
         ok: true,
         service: "mafia-relay",
         http: true,
         protocol: PROTOCOL_VERSION,
-        websocket: false,
-        hint: "HTTP relay. Клиент обращается к /api/health, /api/rooms и /api/rooms/:code/events.",
-      });
-    }
-
-    if (parts[0] === "health" && method === "GET") {
-      const list = await env.MAFIA_ROOMS.list({ prefix: ROOM_PREFIX, limit: MAX_ROOMS });
-      return json(200, {
-        ok: true,
-        service: "mafia-relay",
-        http: true,
-        protocol: PROTOCOL_VERSION,
-        rooms: list.keys.length,
+        rooms: 0,
         uptime: 0,
       });
     }
@@ -484,60 +553,41 @@ export default {
       if (method === "POST") {
         const body = await readJson(request);
         if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
-        return handleCreate(env, body);
+
+        // Resolve or generate a code.
+        const requested = String(body.code ?? "").toUpperCase();
+        let code = "";
+        if (requested) {
+          if (!isValidRoomCode(requested)) return json(400, { ok: false, error: "Неверный код комнаты." });
+          if (await codeIsTaken(env, requested)) return json(409, { ok: false, error: "Комната с таким кодом уже есть." });
+          code = requested;
+        } else {
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            const candidate = createRoomCode();
+            if (!(await codeIsTaken(env, candidate))) {
+              code = candidate;
+              break;
+            }
+          }
+          if (!code) return json(503, { ok: false, error: "Не удалось создать код комнаты." });
+        }
+
+        const id = env.MAFIA_DO.idFromName(code);
+        const stub = env.MAFIA_DO.get(id);
+        const initUrl = new URL(request.url);
+        initUrl.pathname = `${initUrl.pathname.replace(/\/+$/, "")}/${code}/init`;
+        const init = new Request(initUrl.toString(), { method: "POST", body: JSON.stringify({ code, hostName: body.hostName, meta: body.meta }) });
+        return stub.fetch(init);
       }
       return json(405, { ok: false, error: "Метод не поддерживается." });
     }
 
-    if (parts[0] !== "rooms" || parts.length < 2) {
-      return json(404, { ok: false, error: "Not found" });
-    }
-
-    const code = String(parts[1]).toUpperCase();
-    if (!isValidRoomCode(code)) return json(400, { ok: false, error: "Неверный код комнаты." });
-
-    const room = await loadRoom(env, code);
-    if (!room) return json(404, { ok: false, error: "Комната не найдена." });
-
-    const action = parts[2] ?? "";
-    if (action === "join" && method === "POST") {
-      const body = await readJson(request);
-      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
-      return handleJoin(env, code, room, body);
-    }
-    if (action === "events" && method === "GET") {
-      return handleGetEvents(
-        env,
-        room,
-        url.searchParams.get("peerId") ?? "",
-        url.searchParams.get("token") ?? "",
-        clampInt(url.searchParams.get("since"), 0, Number.MAX_SAFE_INTEGER, 0),
-      );
-    }
-    if (action === "events" && method === "POST") {
-      const body = await readJson(request);
-      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
-      return handlePostEvent(env, room, body);
-    }
-    if (action === "meta" && method === "POST") {
-      const body = await readJson(request);
-      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
-      return handleMeta(env, room, body);
-    }
-    if (action === "kick" && method === "POST") {
-      const body = await readJson(request);
-      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
-      return handleKick(env, room, body);
-    }
-    if (action === "close" && method === "POST") {
-      const body = await readJson(request);
-      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
-      return handleClose(env, room, body);
-    }
-    if (action === "leave" && method === "POST") {
-      const body = await readJson(request);
-      if (!body) return json(400, { ok: false, error: "Некорректный запрос." });
-      return handleLeave(env, room, body);
+    if (parts[0] === "rooms" && parts.length >= 2) {
+      const code = String(parts[1]).toUpperCase();
+      if (!isValidRoomCode(code)) return json(400, { ok: false, error: "Неверный код комнаты." });
+      const id = env.MAFIA_DO.idFromName(code);
+      const stub = env.MAFIA_DO.get(id);
+      return stub.fetch(request);
     }
 
     return json(404, { ok: false, error: "Not found" });

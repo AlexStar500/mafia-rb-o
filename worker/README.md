@@ -1,45 +1,55 @@
-# MAFIA relay — Cloudflare Worker
+# MAFIA relay — Cloudflare Worker + Durable Objects
 
-Этот воркер заменяет Vercel-relay. Он принимает те же запросы `/api/*`, что и
-старый `api/index.mjs`, и хранит комнаты в Workers KV.
+Этот воркер заменяет и Vercel, и KV-версию: каждая комната — отдельный
+**Durable Object** (строгая консистентность, нет гонок, комнаты изолированы),
+а публичный список комнат держится в лёгком KV-индексе.
 
-## Как задеплоить (без wrangler, через дашборд)
+Нужны два binding'а:
+- **MAFIA_DO** — Durable Object namespace (класс `RoomObject`).
+- **MAFIA_ROOMS** — KV namespace (индекс публичных комнат).
 
-1. Открой Cloudflare → **Workers & Pages** → создай Worker (или открой свой).
-2. **KV namespace**: Cloudflare → **Workers & Pages → KV** → «Create namespace»,
-   имя `MAFIA_ROOMS`.
-3. В настройках Worker: **Settings → Variables → KV Namespace Bindings** →
-   «Add binding», имя переменной `MAFIA_ROOMS`, выбрать созданный namespace.
-4. Вставь код `worker.js` в редактор Worker и нажми **Deploy**.
+## Вариант A — через wrangler (проще для DO)
+
+1. `npm i -g wrangler` (если ещё нет), затем `wrangler login`.
+2. Создай KV namespace и вставь его id в `wrangler.toml` (поле `id`).
+   Либо `wrangler kv namespace create MAFIA_ROOMS` — вернёт id.
+3. В папке `worker/` запусти `wrangler deploy`.
+
+Класс `RoomObject` создаётся автоматически (новые SQLite-DO с авто-миграцией).
+
+## Вариант B — через дашборд (без wrangler)
+
+1. Cloudflare → **Workers & Pages → KV** → создай namespace `MAFIA_ROOMS`.
+2. Cloudflare → **Workers & Pages → Durable Objects** → создай namespace
+   (или используй «авто-миграцию» при первом деплое — для SQLite-DO).
+3. Открой Worker → **Settings → Variables**:
+   - KV Namespace Binding: имя `MAFIA_ROOMS` → твой namespace.
+   - Durable Object Binding: имя `MAFIA_DO` → namespace, класс `RoomObject`.
+4. Вставь код `worker.js` в редактор → **Deploy**.
+
+> Если в дашборде DO-класс требует «migration» и не даёт создать binding без
+> wrangler — проще использовать вариант A (одна команда `wrangler deploy`).
 
 ## Проверка
 
 ```
 https://mafia.aleshkalarin2002.workers.dev/api/health
 ```
-Должен вернуть:
-```json
-{"ok":true,"service":"mafia-relay","http":true,"protocol":2,"rooms":0,"uptime":0}
-```
+→ `{"ok":true,"service":"mafia-relay","http":true,"protocol":2,...}`
 
-## Подключение игры
+## Почему DO, а не KV
 
-Игра уже знает этот адрес как основной публичный relay
-(`js/net/auto.js` → `PUBLIC_HTTP_RELAY_WORKER`). Можно также вписать его вручную
-в **Настройки → Сеть → Адрес relay**:
-```
-https://mafia.aleshkalarin2002.workers.dev
-```
-(путь `/api` подставится сам).
+- **KV** — eventual consistency + лимиты на запись (~1000/день). Хватает на
+  пару комнат, дальше упирается.
+- **Durable Objects** — строгая консистентность, состояние комнаты в памяти
+  объекта (без гонок чтения-модификации-записи), комнаты масштабируются
+  независимо. Для 100 одновременных комнат нужен именно DO.
+- KV остаётся только как дешёвый индекс списка публичных комнат (редкие
+  записи на create/meta/close — не на каждый поллинг).
 
-## Ограничения KV
+## Про лимиты
 
-- KV **eventually consistent** — после записи значение видно не мгновенно
-  (обычно < 1 с). Для переписки в чате это незаметно.
-- Есть лимиты на запись (бесплатный тариф ~1000 записей/день). Воркер хранит
-  комнату одним JSON-значением и пишет «сердцебиение» раз в минуту, так что
-  дружеской партии хватает с запасом.
-- Read-modify-write гонки теоретически возможны (две одновременные записи
-  могут потерять одну). Для нескольких друзей — ок. Для загруженного
-  публичного relay лучше перейти на **Durable Objects** (строгая
-  консистентность + WebSocket), но это отдельная работа.
+100 активных комнат × 8 игроков × поллинг — это тысячи запросов в минуту.
+Бесплатный план Workers (~100k запросов/день) такое не потянет; для реальной
+нагрузки нужен платный Cloudflare (или VPS). DO решает проблему консистентности
+и масштабируемости хранения, но не отменяет лимит на число запросов.

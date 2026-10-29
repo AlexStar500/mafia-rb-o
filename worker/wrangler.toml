@@ -1,0 +1,20 @@
+# Опционально: для развёртывания через wrangler (одна команда: `wrangler deploy`).
+# Если деплоишь вручную через дашборд — этот файл не нужен, создай binding'и
+# MAFIA_DO (Durable Object, класс RoomObject) и MAFIA_ROOMS (KV) в настройках Worker'а.
+
+name = "mafia-relay"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# Новый стиль SQLite-DO с автоматической миграцией — wrangler сам создаст класс.
+[[durable_objects.bindings]]
+name = "MAFIA_DO"
+class_name = "RoomObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomObject"]
+
+[[kv_namespaces]]
+binding = "MAFIA_ROOMS"
+id = "ЗАМЕНИ_НА_ID_СВОЕГО_KV_NAMESPACE"
