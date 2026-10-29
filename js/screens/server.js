@@ -1,4 +1,4 @@
-import { html } from "../ui/dom.js";
+import { html, raw } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 
 const MODES = Object.freeze([
@@ -16,7 +16,7 @@ const MODES = Object.freeze([
     subtitle: "Сервер на своём компьютере",
     text: "Хост запускает сервер у себя, а друзья заходят по его адресу. Для этого на компьютере хоста нужен Node.js. Если возиться не хочется — выберите «Онлайн».",
     steps: [
-      "Скачайте игру с GitHub (зелёная кнопка Code → Download ZIP) и распакуйте",
+      "Скачайте игру с <a href='https://github.com/AlexStar500/mafia-rb-o' target='_blank' rel='noopener'>GitHub</a> (Code → Download ZIP) и распакуйте",
       "Установите Node.js с nodejs.org, если его ещё нет",
       "В папке с игрой запустите терминал и выполните: npm install",
       "Затем: npm start — в терминале появится адрес вида http://192.168.x.x:8080",
@@ -74,7 +74,7 @@ export function createServerScreen(ctx) {
               <p>${mode.text}</p>
               <ol class="step-list step-list--compact">
                 ${mode.steps.map(
-                  (step, index) => html`<li><span>${index + 1}</span><div>${step}</div></li>`,
+                  (step, index) => html`<li><span>${index + 1}</span><div>${raw(step)}</div></li>`,
                 )}
               </ol>
               <p class="field__hint">${mode.no}</p>
