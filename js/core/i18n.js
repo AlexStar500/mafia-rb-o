@@ -66,6 +66,30 @@ const OVERRIDES = Object.freeze({
     "https://mafiarbovercel.vercel.app or wss://relay.example/ws",
   "Ночь 1. Город засыпает.": "Night 1. The town falls asleep.",
   "День 1. Город просыпается.": "Day 1. The town wakes up.",
+  // Bodyguard role.
+  "Телохранитель": "Bodyguard",
+  "Никто не умрёт на моём дежурстве.": "No one dies on my watch.",
+  "Днём защищает игрока от убийства, суда, ассасина и голосования.":
+    "By day, shields a player from the kill, the judge, the assassin and the vote.",
+  "Один раз за игру, днём, ты выбираешь, кого прикрыть — себя или другого игрока. Защита действует весь текущий день (голосование, приговор судьи) и следующую ночь (убийство мафии, контракт ассасина).":
+    "Once per game, during the day, you choose whom to protect — yourself or another player. The protection lasts the whole current day (voting, the judge's verdict) and the next night (mafia kill, assassin's contract).",
+  "Днём, один раз за игру, защищает себя или другого живого игрока.":
+    "By day, once per game, shields yourself or another living player.",
+  "Защищённого нельзя повесить, казнить судьёй, убить ночью или контрактом.":
+    "The protected player cannot be hanged, judged, killed at night, or contracted.",
+  "Защита действует до конца текущего дня и на следующую ночь.":
+    "The protection lasts until the end of the current day and through the next night.",
+  "Прикрывай того, кого мафия захочет убрать, а не того, кого жалко.":
+    "Protect whom the mafia would want to remove, not whom you pity.",
+  "Защитить": "Protect",
+  "Защищённого нельзя повесить, казнить судьёй, убить ночью или контрактом. Действует до конца дня и на следующую ночь.":
+    "The protected player cannot be hanged, judged, killed at night, or contracted. Lasts until the end of the day and the next night.",
+  // New bots.
+  "Слышит город и всегда отвечает.": "Hears the city and always answers.",
+  "Философствует даже под петлёй.": "Philosophizes even under the noose.",
+  "Считает голоса быстрее, чем все успевают соврать.": "Counts votes faster than everyone manages to lie.",
+  "Путает карты и радуется.": "Mixes up the cards and enjoys it.",
+  "Древний, хитрый и всегда рядом.": "Ancient, cunning, and always nearby.",
 });
 
 const TEXT_SKIP = [

@@ -236,7 +236,7 @@ export const ROLES = Object.freeze({
     name: "Телохранитель",
     team: "town",
     icon: "assets/img/roles/bodyguard.png",
-    color: "#4fb477",
+    color: "#d9b36c",
     tagline: "Никто не умрёт на моём дежурстве.",
     short: "Днём защищает игрока от убийства, суда, ассасина и голосования.",
     description:
