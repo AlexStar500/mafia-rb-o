@@ -2,7 +2,7 @@ import { html, qs, mount } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { RoomForm } from "../ui/roomForm.js";
 import { normalizeRelayUrl } from "../core/security.js";
-import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM, resolveRelayForMode } from "../net/auto.js";
+import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM, PUBLIC_HTTP_RELAY_WORKER, resolveRelayForMode } from "../net/auto.js";
 import { normalizeRoomConfig, computeRoleSetup, ROLES } from "../data/roles.js";
 
 function localRelayDefault() {
@@ -13,9 +13,10 @@ function localRelayDefault() {
   } catch {
     // ignore
   }
-  // The custom domain is the primary public relay: it sits behind Cloudflare,
-  // so it stays reachable in regions that block raw *.vercel.app edges.
-  return PUBLIC_HTTP_RELAY_CUSTOM;
+  // The Workers.dev relay is the primary public relay: it stays reachable in
+  // regions that block the raw *.vercel.app edges and Cloudflare-proxied
+  // custom domains.
+  return PUBLIC_HTTP_RELAY_WORKER;
 }
 
 function summarySetup(config) {
@@ -256,7 +257,7 @@ export function createCreateScreen(ctx) {
             // A prefilled public address means "auto": probe the direct Vercel
             // edge and the custom domain, so a blocked edge still works.
             const isPublicDefault =
-              !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM;
+              !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM || typedRelay === PUBLIC_HTTP_RELAY_WORKER;
             relayUrl = isPublicDefault ? await resolveRelayForMode("online", "") : typedRelay;
             if (!relayUrl) {
               error.textContent = "Relay не найден. Укажите адрес вручную.";

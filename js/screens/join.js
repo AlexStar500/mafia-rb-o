@@ -1,7 +1,7 @@
 import { html, qs, qsa } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { normalizeRelayUrl } from "../core/security.js";
-import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM, resolveRelayForMode } from "../net/auto.js";
+import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM, PUBLIC_HTTP_RELAY_WORKER, resolveRelayForMode } from "../net/auto.js";
 import { isValidRoomCode, normalizeRoomCode } from "../core/security.js";
 import { loadRoomRegistry } from "../core/storage.js";
 
@@ -243,7 +243,7 @@ export function createJoinScreen(ctx) {
             return;
           }
           const isPublicDefault =
-            !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM;
+            !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM || typedRelay === PUBLIC_HTTP_RELAY_WORKER;
           relayUrl = isPublicDefault ? await resolveRelayForMode("online", "") : typedRelay;
           if (!relayUrl) {
             error.textContent = "Укажите корректный relay адрес.";
