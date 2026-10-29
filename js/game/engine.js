@@ -1411,12 +1411,12 @@ export class GameEngine {
 
   _canSeeChat(message, viewer, spectator) {
     if (message.channel === "public") return true;
-    // A player hanged by vote keeps the public room until their last word is
-    // spoken. Only then do the dead and mafia feeds open up.
+    // A player hanged by vote keeps only the public room until their last word
+    // is spoken (across the whole verdict + last-words window). Only then do
+    // the dead and mafia feeds open up for them.
     if (
       viewer &&
       !viewer.alive &&
-      this.phase === PHASE.LAST_WORDS &&
       viewer.id === this.lastWordsPlayerId &&
       !this.lastWordsSpoken
     ) {

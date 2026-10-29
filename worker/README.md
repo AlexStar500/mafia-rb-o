@@ -10,7 +10,7 @@
    имя `MAFIA_ROOMS`.
 3. В настройках Worker: **Settings → Variables → KV Namespace Bindings** →
    «Add binding», имя переменной `MAFIA_ROOMS`, выбрать созданный namespace.
-4. Вставь код `index.js` в редактор Worker и нажми **Deploy**.
+4. Вставь код `worker.js` в редактор Worker и нажми **Deploy**.
 
 ## Проверка
 
