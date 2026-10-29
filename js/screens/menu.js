@@ -6,7 +6,7 @@ import { AVATAR_COLORS } from "../core/storage.js";
 import { nickError, sanitizeNick } from "../core/security.js";
 import { asset } from "../core/assets.js";
 import { BOT_ROSTER } from "../data/bots.js";
-import { allRoles } from "../data/roles.js";
+import { allRoles, ROLE_LIMITS } from "../data/roles.js";
 import { QUICK_MESSAGES } from "../data/quickChat.js";
 
 function botModal(bot) {
@@ -53,7 +53,7 @@ export function createMenuScreen(ctx) {
   const rootHtml = html`<div class="screen menu-screen">
     <div class="menu">
       <header class="menu__intro">
-        <span class="eyebrow">${icon("moon", { size: 13 })} Браузерная мафия · 4–20 игроков</span>
+        <span class="eyebrow">${icon("moon", { size: 13 })} Браузерная мафия · 4–${ROLE_LIMITS.maxPlayers} игроков</span>
         <h1 class="menu__logo"><span>МАФИЯ</span><small>Ночной город</small></h1>
         <p class="menu__tagline">
           ${allRoles} ролей, живые комнаты и город, который врёт красиво.
@@ -61,7 +61,7 @@ export function createMenuScreen(ctx) {
         </p>
         <div class="menu__stats">
           <div class="menu__stat"><b>${allRoles}</b><span>ролей</span></div>
-          <div class="menu__stat"><b>20</b><span>игроков</span></div>
+          <div class="menu__stat"><b>${ROLE_LIMITS.maxPlayers}</b><span>игроков</span></div>
           <div class="menu__stat"><b>${QUICK_MESSAGES.length}</b><span>фраз</span></div>
         </div>
       </header>
@@ -152,7 +152,7 @@ export function createMenuScreen(ctx) {
       <section class="menu__bots">
         <div class="menu__bots-head">
           <span class="eyebrow">${icon("bot", { size: 13 })} ИИ-горожане</span>
-          <span class="muted">20 характеров · своя память · свои обиды</span>
+          <span class="muted">${BOT_ROSTER.length} характеров · пиксельные портреты · своя память</span>
         </div>
         <div class="bot-strip">
           ${botLine.map(
