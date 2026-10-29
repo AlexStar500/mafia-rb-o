@@ -261,6 +261,13 @@ export class RoomForm {
               max: ROLE_LIMITS.maxRoleCount,
             })}
             ${roleCountRow({
+              field: "roles.bodyguard",
+              title: "Телохранитель",
+              hint: "Днём защищает игрока от убийства, суда, ассасина и голосования.",
+              value: value.roles.bodyguard,
+              max: ROLE_LIMITS.maxRoleCount,
+            })}
+            ${roleCountRow({
               field: "roles.jester",
               title: "Шут",
               hint: "Побеждает, если его повесят голосованием.",
@@ -465,7 +472,7 @@ export class RoomForm {
       }
     }
 
-    for (const field of ["mafia", "sheriff", "civilian", "assassin", "bartender", "spy", "doctor", "musician", "judge", "jester", "puppeteer"]) {
+    for (const field of ["mafia", "sheriff", "civilian", "assassin", "bartender", "spy", "doctor", "musician", "judge", "bodyguard", "jester", "puppeteer"]) {
       const key = `roles.${field}`;
       const current = Number(value.roles[field]) || 0;
       const output = qs(`[data-step-value="${key}"]`, this.container);

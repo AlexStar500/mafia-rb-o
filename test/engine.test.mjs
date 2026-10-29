@@ -169,6 +169,32 @@ test("doctor save prevents the mafia kill", () => {
   assert.equal(engine.lastNight.deaths.length, 0);
 });
 
+test("bodyguard is a town role that guards once and blocks a night kill", () => {
+  const setup = computeRoleSetup(8, { bodyguard: 1 });
+  assert.equal(setup.counts.bodyguard, 1);
+  assert.ok(setup.ids.includes("bodyguard"));
+
+  const { engine, clock } = setupEngine({ count: 6 });
+  engine.start(true);
+  setRoles(engine, ["mafia", "bodyguard", "sheriff", "civilian", "civilian", "civilian"]);
+  const [mafia, bodyguard, , victim] = engine.players;
+
+  // The guard is a day action.
+  setPhase(engine, PHASE.DISCUSSION, 30);
+  assert.equal(engine.setDayAction(bodyguard.id, "guard", victim.id).ok, true);
+  assert.equal(bodyguard.bodyguardTarget, victim.id);
+  assert.equal(bodyguard.bodyguardUsed, true);
+  // One-time use only.
+  assert.equal(engine.setDayAction(bodyguard.id, "guard", engine.players[4].id).ok, false);
+
+  // The guard carries into the night: the mafia attack is blocked.
+  engine._enterNight(engine.clock());
+  assert.equal(engine.setNightAction(mafia.id, "kill", victim.id).ok, true);
+  clock.value = engine.phaseEndsAt + 1;
+  engine.tick(clock.value);
+  assert.equal(victim.alive, true, "guarded target survives the night");
+});
+
 test("assassin contract kills through healing and no longer costs the assassin his life", () => {
   const first = setupEngine({ count: 8 });
   first.engine.start(true);

@@ -41,6 +41,7 @@ const ACTION_LABEL = Object.freeze({
   puppet: "Выбрать марионетку",
   reveal: "Узнать роль",
   judge: "Приговор",
+  guard: "Защитить",
   cure: "Излечить зомби",
   vote: "Повесить",
 });
@@ -55,6 +56,7 @@ const ACTION_HINT = Object.freeze({
   puppet: "Марионетка выбирается один раз на всю игру. Её победа станет вашей.",
   reveal: "Шпион узнаёт точную роль игрока. Один раз в день, без права передумать.",
   judge: "Если цель — мафия, погибнет она. Если нет — погибнете вы. Приговор окончательный.",
+  guard: "Защищённого нельзя повесить, казнить судьёй, убить ночью или контрактом. Действует до конца дня и на следующую ночь.",
   cure: "Доктор может вернуть зомби к жизни три раза за игру. После лечения цель снова играет за город.",
   vote: "Один голос за фазу, без переголосования. Ничья означает, что никто не повешен.",
 });
@@ -105,6 +107,17 @@ function actionConfig(view, mode) {
         action: "cure",
         options: (view.players ?? [])
           .filter((player) => player.alive && player.zombie)
+          .map((player) => player.id),
+        blocked: [],
+        queued: null,
+      };
+    }
+    if (mode === "guard" && view.dayActions?.bodyguard?.available) {
+      return {
+        kind: "day",
+        action: "guard",
+        options: (view.players ?? [])
+          .filter((player) => player.alive)
           .map((player) => player.id),
         blocked: [],
         queued: null,
@@ -534,6 +547,7 @@ export function createGameScreen(ctx, initialView) {
       puppet: "key",
       reveal: "eye",
       judge: "gavel",
+      guard: "shield",
       cure: "heart",
       vote: "vote",
       kill: "target",
@@ -553,6 +567,11 @@ export function createGameScreen(ctx, initialView) {
     if (day.judge?.available) {
       items.push(html`<button class="action-toggle__btn ${mode === "judge" ? "is-active" : ""}" type="button" data-game-mode="judge">
         ${icon("gavel", { size: 13 })} Приговор
+      </button>`);
+    }
+    if (day.bodyguard?.available) {
+      items.push(html`<button class="action-toggle__btn ${mode === "guard" ? "is-active" : ""}" type="button" data-game-mode="guard">
+        ${icon("shield", { size: 13 })} Защитить
       </button>`);
     }
     if (day.cure?.available) {
@@ -1067,6 +1086,7 @@ export function createGameScreen(ctx, initialView) {
       if (mode === "contract" && !view.night?.contract?.available) mode = null;
       if (mode === "reveal" && !view.dayActions?.spy?.available) mode = null;
       if (mode === "judge" && !view.dayActions?.judge?.available) mode = null;
+      if (mode === "guard" && !view.dayActions?.bodyguard?.available) mode = null;
       if (mode === "cure" && !view.dayActions?.cure?.available) mode = null;
       if (mode === "drink" || mode === "block" || mode === "puppet") mode = null;
       playersSignature = "";
@@ -1189,6 +1209,7 @@ export function createGameScreen(ctx, initialView) {
           if (nextMode === "contract" && !view?.night?.contract?.available) return;
           if (nextMode === "reveal" && !view?.dayActions?.spy?.available) return;
           if (nextMode === "judge" && !view?.dayActions?.judge?.available) return;
+          if (nextMode === "guard" && !view?.dayActions?.bodyguard?.available) return;
           mode = nextMode === "kill" || nextMode === "vote" ? null : nextMode;
           selected = null;
           app.playSfx("select");

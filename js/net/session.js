@@ -28,7 +28,7 @@ const BOT_ACTION_KINDS = new Set([
   "spectate-pause",
 ]);
 const NIGHT_ACTIONS = new Set(["kill", "heal", "check", "contract", "drink", "block", "puppet"]);
-const DAY_ACTIONS = new Set(["reveal", "judge"]);
+const DAY_ACTIONS = new Set(["reveal", "judge", "guard", "cure"]);
 const CHAT_CHANNELS = new Set(["public", "mafia", "dead"]);
 
 export function normalizeSelf(input = {}) {

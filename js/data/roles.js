@@ -231,6 +231,25 @@ export const ROLES = Object.freeze({
     tips: "Не рискуй без проверки. Ошибка судьи стоит городу двух голосов.",
     night: false,
   }),
+  bodyguard: Object.freeze({
+    id: "bodyguard",
+    name: "Телохранитель",
+    team: "town",
+    icon: "assets/img/roles/bodyguard.png",
+    color: "#4fb477",
+    tagline: "Никто не умрёт на моём дежурстве.",
+    short: "Днём защищает игрока от убийства, суда, ассасина и голосования.",
+    description:
+      "Один раз за игру, днём, ты выбираешь, кого прикрыть — себя или другого игрока. Защита действует весь текущий день (голосование, приговор судьи) и следующую ночь (убийство мафии, контракт ассасина).",
+    abilities: [
+      "Днём, один раз за игру, защищает себя или другого живого игрока.",
+      "Защищённого нельзя повесить, казнить судьёй, убить ночью или контрактом.",
+      "Защита действует до конца текущего дня и на следующую ночь.",
+      "Побеждает вместе с городом.",
+    ],
+    tips: "Прикрывай того, кого мафия захочет убрать, а не того, кого жалко.",
+    night: false,
+  }),
   civilian: Object.freeze({
     id: "civilian",
     name: "Мирный",
@@ -318,6 +337,7 @@ export const ROLE_ORDER = Object.freeze([
   "doctor",
   "musician",
   "judge",
+  "bodyguard",
   "civilian",
   "jester",
   "puppeteer",
@@ -340,6 +360,7 @@ export const ROLE_CONFIG_KEYS = Object.freeze([
   "doctor",
   "musician",
   "judge",
+  "bodyguard",
   "puppeteer",
   "jester",
   "twin",
@@ -379,6 +400,7 @@ export const DEFAULT_ROOM_CONFIG = Object.freeze({
     doctor: 1,
     musician: 0,
     judge: 0,
+    bodyguard: 0,
     puppeteer: 0,
     jester: 0,
     twin: 0,
@@ -440,6 +462,7 @@ export function normalizeRoomConfig(input = {}, playerCount) {
     doctor: roleCount(rolesSrc.doctor, base.roles.doctor),
     musician: roleCount(rolesSrc.musician, base.roles.musician),
     judge: roleCount(rolesSrc.judge, base.roles.judge),
+    bodyguard: roleCount(rolesSrc.bodyguard, base.roles.bodyguard),
     puppeteer: roleCount(rolesSrc.puppeteer, base.roles.puppeteer),
     jester: roleCount(rolesSrc.jester, base.roles.jester),
     twin: twinCount(rolesSrc.twin),
@@ -483,6 +506,7 @@ export function computeRoleSetup(playerCount, options = {}, mode = "classic") {
     doctor: roleCount(options.doctor, 1),
     musician: roleCount(options.musician, 0),
     judge: roleCount(options.judge, 0),
+    bodyguard: roleCount(options.bodyguard, 0),
     puppeteer: roleCount(options.puppeteer, 0),
     jester: roleCount(options.jester, 0),
     twin: twinCount(options.twin),
@@ -506,6 +530,7 @@ export function computeRoleSetup(playerCount, options = {}, mode = "classic") {
     doctor: requested.doctor,
     musician: requested.musician,
     judge: requested.judge,
+    bodyguard: requested.bodyguard,
     civilian: 0,
     jester: requested.jester,
     puppeteer: requested.puppeteer,
@@ -514,7 +539,7 @@ export function computeRoleSetup(playerCount, options = {}, mode = "classic") {
 
   const specialCount = () => counts.assassin + counts.bartender + counts.spy;
   const optionalCount = () =>
-    counts.doctor + counts.musician + counts.judge + counts.puppeteer + counts.jester + counts.twin;
+    counts.doctor + counts.musician + counts.judge + counts.bodyguard + counts.puppeteer + counts.jester + counts.twin;
   const usedCount = () => counts.mafia + specialCount() + counts.sheriff + optionalCount();
 
   // Explicit mafia count is the whole family; 0 means automatic balance.
@@ -537,7 +562,7 @@ export function computeRoleSetup(playerCount, options = {}, mode = "classic") {
 
   // Everything must fit into the city. Optional roles go first. Twins are a
   // fixed pair, so trimming removes both of them, never a lone twin.
-  const trimOrder = ["twin", "puppeteer", "jester", "musician", "judge", "doctor"];
+  const trimOrder = ["twin", "puppeteer", "jester", "musician", "judge", "bodyguard", "doctor"];
   while (usedCount() > n) {
     const roleId = trimOrder.find((id) => counts[id] > 0);
     if (!roleId) break;

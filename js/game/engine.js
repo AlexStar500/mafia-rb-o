@@ -187,6 +187,8 @@ export class GameEngine {
       selfHeals: 0,
       contractUsed: false,
       judgeUsed: false,
+      bodyguardUsed: false,
+      bodyguardTarget: null,
       spyRevealDay: -1,
       drunkDay: -1,
       blockedDay: -1,
@@ -736,6 +738,14 @@ export class GameEngine {
       );
     }
 
+    // Bodyguards cover their target through the coming night.
+    const guardedTargets = new Set();
+    for (const bodyguard of this.alivePlayers) {
+      if (bodyguard.roleId === "bodyguard" && bodyguard.bodyguardTarget) {
+        guardedTargets.add(bodyguard.bodyguardTarget);
+      }
+    }
+
     const contractTargets = new Set();
     const contractAssassins = [];
     for (const [assassinId, victimId] of night.contracts) {
@@ -743,6 +753,10 @@ export class GameEngine {
       const victim = this.playerMap.get(victimId);
       if (!assassin?.alive || assassin.roleId !== "assassin" || blockedIds.has(assassinId)) continue;
       if (assassin.contractUsed || this.day < 2 || !victim?.alive) continue;
+      if (guardedTargets.has(victimId)) {
+        this._addNote(assassin, `Контракт сорван: ${victim.name} под защитой телохранителя.`, "muted");
+        continue;
+      }
       assassin.contractUsed = true;
       contractTargets.add(victimId);
       contractAssassins.push(assassin);
@@ -783,17 +797,26 @@ export class GameEngine {
     const converted = [];
     if (this.config.mode === "zombie") {
       // Night kills do not kill: they turn the victim into a zombie.
-      if (targetId && !healedTargets.has(targetId) && !this._isJesterShowdown()) {
+      if (targetId && !healedTargets.has(targetId) && !guardedTargets.has(targetId) && !this._isJesterShowdown()) {
         const victim = this.playerMap.get(targetId);
         if (victim?.alive && victim.team !== "mafia") {
           this._convertToZombie(victim);
           converted.push(victim);
         }
       }
-    } else if (targetId && !healedTargets.has(targetId) && !this._isJesterShowdown()) {
+    } else if (targetId && !healedTargets.has(targetId) && !guardedTargets.has(targetId) && !this._isJesterShowdown()) {
       killOne(targetId, "mafia");
     }
     for (const id of contractTargets) killOne(id, "assassin");
+
+    // Tell bodyguards whose charge survived the night.
+    if (targetId && guardedTargets.has(targetId) && !killed.has(targetId)) {
+      for (const bodyguard of this.alivePlayers) {
+        if (bodyguard.roleId === "bodyguard" && bodyguard.bodyguardTarget === targetId) {
+          this._addNote(bodyguard, `Вы защитили ${this.playerMap.get(targetId)?.name ?? "цель"}. Ночь прошла спокойно.`, "town");
+        }
+      }
+    }
 
     // A puppeteer who never picks a puppet within two nights fades away.
     if (this.day >= 2) {
@@ -853,6 +876,13 @@ export class GameEngine {
       for (const id of mafiaIds) {
         const mafiaPlayer = this.playerMap.get(id);
         if (mafiaPlayer) this._addNote(mafiaPlayer, "Этой ночью никто не погиб.", "muted");
+      }
+    }
+
+    // The guard lasts one day + one night; clear it now that the night is over.
+    for (const bodyguard of this.players) {
+      if (bodyguard.roleId === "bodyguard" && bodyguard.bodyguardTarget) {
+        bodyguard.bodyguardTarget = null;
       }
     }
 
@@ -927,6 +957,19 @@ export class GameEngine {
       if (player.roleId !== "judge") return { ok: false, error: "Только судья выносит приговор." };
       if (player.judgeUsed) return { ok: false, error: "Приговор уже вынесен." };
       if (!target?.alive || target.id === player.id) return { ok: false, error: "Выберите другого живого игрока." };
+      const guarded = this.alivePlayers.some(
+        (candidate) => candidate.roleId === "bodyguard" && candidate.bodyguardTarget === target.id,
+      );
+      if (guarded) {
+        player.judgeUsed = true;
+        this._addLog(
+          "day",
+          `Судья попытался казнить ${target.name}, но телохранитель отвёл приговор.`,
+          { tone: "town", playerId: target.id },
+        );
+        this._changed("day-action");
+        return { ok: true, blocked: true, hit: false, victimId: target.id, deaths: [], ended: this._checkVictory(this.clock()) };
+      }
       player.judgeUsed = true;
       const targetIsMafia = target.team === "mafia";
       const victim = targetIsMafia ? target : player;
@@ -947,6 +990,27 @@ export class GameEngine {
         deaths: deaths.map((death) => death.id),
         ended,
       };
+    }
+
+    if (action === "guard") {
+      if (player.roleId !== "bodyguard") return { ok: false, error: "Только телохранитель защищает." };
+      if (player.bodyguardUsed) return { ok: false, error: "Вы уже использовали защиту." };
+      if (!target?.alive) return { ok: false, error: "Выберите живого игрока." };
+      player.bodyguardUsed = true;
+      player.bodyguardTarget = target.id;
+      this._addNote(
+        player,
+        target.id === player.id
+          ? "Вы прикрываете себя до конца дня и на следующую ночь."
+          : `Вы прикрываете ${target.name} до конца дня и на следующую ночь.`,
+        "town",
+      );
+      this._addLog("day", `Телохранитель ${player.name} берёт ${target.name} под защиту.`, {
+        tone: "town",
+        playerId: target.id,
+      });
+      this._changed("day-action");
+      return { ok: true, targetId: target.id };
     }
 
     return { ok: false, error: "Неизвестное дневное действие." };
@@ -1050,10 +1114,16 @@ export class GameEngine {
     const enough = top && top.count >= VOTE_MIN && !tie;
     const eliminatedId = enough ? top.targetId : null;
 
+    // A bodyguard can shield their charge from the noose.
+    const guardBlocked = Boolean(
+      eliminatedId && this.alivePlayers.some((p) => p.roleId === "bodyguard" && p.bodyguardTarget === eliminatedId),
+    );
+    const effectiveEliminatedId = guardBlocked ? null : eliminatedId;
+
     this.voteResult = {
       counts: entries,
-      eliminatedId,
-      eliminatedName: eliminatedId ? this.playerMap.get(eliminatedId)?.name : null,
+      eliminatedId: effectiveEliminatedId,
+      eliminatedName: effectiveEliminatedId ? this.playerMap.get(effectiveEliminatedId)?.name : null,
       tie,
       topCount: top?.count ?? 0,
       skipped,
@@ -1062,23 +1132,36 @@ export class GameEngine {
       at: now,
     };
 
-    if (eliminatedId) {
-      const eliminated = this.playerMap.get(eliminatedId);
-      this._killPlayer(eliminatedId, "vote", { cause: "vote" });
+    if (guardBlocked && eliminatedId) {
+      const saved = this.playerMap.get(eliminatedId);
+      this._addLog(
+        "vote",
+        `Город хотел повесить ${saved?.name ?? "?"}, но телохранитель отвёл петлю. Никто не повешен.`,
+        { tone: "town", playerId: eliminatedId },
+      );
+      this.lastWordsPlayerId = null;
+      if (this._checkVictory(now)) return;
+      this._setPhase(PHASE.VERDICT, 5, "verdict", now);
+      return;
+    }
+
+    if (effectiveEliminatedId) {
+      const eliminated = this.playerMap.get(effectiveEliminatedId);
+      this._killPlayer(effectiveEliminatedId, "vote", { cause: "vote" });
       this._addLog(
         "vote",
         `Город повесил ${eliminated.name} (${top.count} ${top.count === 1 ? "голос" : "голоса"}).`,
-        { tone: "danger", playerId: eliminatedId },
+        { tone: "danger", playerId: effectiveEliminatedId },
       );
       if (eliminated.roleId === "jester") {
-        this.endGame("neutral", { reason: "jester", playerId: eliminatedId, roleId: "jester" });
+        this.endGame("neutral", { reason: "jester", playerId: effectiveEliminatedId, roleId: "jester" });
         return;
       }
       if (eliminated.roleId === "twin") {
         // The surviving twin wins the moment the other is hanged. A judge's
         // verdict is the exception and is resolved before this point.
         const survivor = this.players.find(
-          (player) => player.roleId === "twin" && player.id !== eliminatedId && player.alive,
+          (player) => player.roleId === "twin" && player.id !== effectiveEliminatedId && player.alive,
         );
         if (survivor) {
           this._addLog("vote", `Второй близнец, ${survivor.name}, празднует победу.`, { tone: "neutral", playerId: survivor.id });
@@ -1087,7 +1170,7 @@ export class GameEngine {
         }
       }
       if (this._checkVictory(now)) return;
-      this.lastWordsPlayerId = eliminatedId;
+      this.lastWordsPlayerId = effectiveEliminatedId;
       this.lastWordsSpoken = false;
       this._setPhase(PHASE.VERDICT, PHASE_DURATIONS.verdict, "verdict", now);
     } else {
@@ -1228,9 +1311,57 @@ export class GameEngine {
     this.endedAt = now;
     this._started = true;
     this._addLog("end", `${this.winner.title}.`, { tone: team === "mafia" ? "danger" : team === "neutral" ? "neutral" : "town" });
+    this._botFarewell(team);
     this.winner.summary = this._resultSummary();
     this._changed("end");
     this.events.emit("ended", this.winner);
+  }
+
+  /** Each surviving bot leaves a parting line themed by the game mode. */
+  _botFarewell(team) {
+    const lines = {
+      classic: {
+        town: ["Город снова выстоял.", "Правда всегда находит дорогу.", "Спокойной ночи, город."],
+        mafia: ["Мафия снова забирает город.", "Город слишком долго доверял не тем.", "Никто не заметил нас вовремя."],
+        neutral: ["Шут смеётся последним.", "Иногда побеждает тот, кто просто хотел хаоса."],
+      },
+      secret: {
+        town: ["Даже в темноте правда вышла наружу.", "Город распутал невидимую мафию.", "Секреты больше не помогут."],
+        mafia: ["Никто так и не узнал, кто был мафией.", "Невидимость — лучшее оружие.", "Город пал в слепую."],
+        neutral: ["Секрет раскрыт слишком поздно.", "Шут выиграл, пока все искали мафию."],
+      },
+      zombie: {
+        town: ["Город очищен от заразы.", "Эпидемия остановлена.", "Доктор и судья сделали своё дело."],
+        mafia: ["Ночь обращает всех. Сопротивление бесполезно.", "Живых больше не осталось.", "Город стал одним большим кладбищем."],
+        neutral: ["Среди мёртвых остался последний смех.", "Шут пережил даже зомби."],
+      },
+    };
+    const pool = lines[this.config.mode]?.[team] ?? lines.classic[team] ?? ["Игра окончена."];
+    if (!pool.length) return;
+    const bots = this.players.filter((player) => player.isBot && player.alive);
+    const now = this.clock();
+    bots.forEach((bot, index) => {
+      this.chat.push({
+        id: `m_${++this.chatSeq}`,
+        seq: this.chatSeq,
+        at: now,
+        day: this.day,
+        phase: this.phase,
+        playerId: bot.id,
+        name: bot.name,
+        color: bot.color,
+        channel: "public",
+        text: pool[index % pool.length],
+        quickId: null,
+        quickRoleId: null,
+        intent: "gg",
+        targetId: null,
+        drunk: false,
+        roleId: bot.roleId,
+      });
+      bot.stats.messages += 1;
+    });
+    if (this.chat.length > 400) this.chat.splice(0, this.chat.length - 400);
   }
 
   _computeMvp(winnerIds, team, jesterId) {
@@ -1719,6 +1850,13 @@ export class GameEngine {
             available: viewer.roleId === "judge" && canDayAction && !viewer.judgeUsed && viewer.blockedDay !== this.day,
             used: Boolean(viewer.judgeUsed),
           },
+          bodyguard: viewer.roleId === "bodyguard"
+            ? {
+                available: canDayAction && !viewer.bodyguardUsed && viewer.blockedDay !== this.day,
+                used: Boolean(viewer.bodyguardUsed),
+                targetId: viewer.bodyguardTarget,
+              }
+            : null,
           spy: {
             available:
               viewer.roleId === "spy" &&

@@ -128,6 +128,30 @@ export const QUICK_MESSAGES = Object.freeze([
   { id: "chaos-6", cat: "chaos", intent: "chaos", text: "Мне всё равно. Я уже мёртв внутри." },
   { id: "chaos-7", cat: "chaos", intent: "chaos", text: "Скучно. Давайте голосовать." },
   { id: "chaos-8", cat: "chaos", intent: "chaos", text: "Сюрприз будет." },
+
+  // Дополнительные фразы (вторая волна)
+  { id: "acc-10", cat: "accuse", intent: "accuse", needsTarget: true, text: "Игрок {target} всю ночь был слишком спокоен." },
+  { id: "acc-11", cat: "accuse", intent: "accuse", needsTarget: true, text: "Я почти уверен в игроке {target}." },
+  { id: "acc-12", cat: "accuse", intent: "accuse", needsTarget: true, text: "Проверьте игрока {target} — мне кажется, это мафия." },
+  { id: "def-11", cat: "defend", intent: "defend", text: "Моя роль полезна городу." },
+  { id: "def-12", cat: "defend", intent: "defend", text: "Дайте договорить, я не закончил." },
+  { id: "def-13", cat: "defend", intent: "defend-other", needsTarget: true, text: "Игрок {target} выглядит честным. Слышал его ночью." },
+  { id: "q-10", cat: "question", intent: "question", text: "Кто-нибудь сегодня вообще проверял кого-то?" },
+  { id: "q-11", cat: "question", intent: "question", text: "А если мафия — тот, кто молчит громче всех?" },
+  { id: "q-12", cat: "question", intent: "question", needsTarget: true, text: "Кто последним голосовал против игрока {target}?" },
+  { id: "vote-9", cat: "vote", intent: "vote-call", text: "У нас мало времени. Решаем." },
+  { id: "vote-10", cat: "vote", intent: "vote-call", needsTarget: true, text: "Лучше игрок {target}, чем никого." },
+  { id: "vote-11", cat: "vote", intent: "skip", text: "Сегодня пропускаю — доказательств нет." },
+  { id: "night-10", cat: "night", intent: "night", text: "Помните, кто что говорил днём." },
+  { id: "night-11", cat: "night", intent: "night", needsTarget: true, text: "Если меня убьют, присмотритесь к игроку {target}." },
+  { id: "night-12", cat: "night", intent: "night", text: "Шериф, проверь самого тихого." },
+  { id: "emo-10", cat: "emote", intent: "emote", text: "Ах вот оно что." },
+  { id: "emo-11", cat: "emote", intent: "emote", text: "Интересный поворот." },
+  { id: "emo-12", cat: "emote", intent: "emote", text: "Ну наконец-то." },
+  { id: "dead-9", cat: "dead", intent: "emote", text: "Я вам говорил." },
+  { id: "dead-10", cat: "dead", intent: "smalltalk", text: "Наблюдаю. Очень интересно." },
+  { id: "quick-9", cat: "quick", intent: "smalltalk", text: "Привет, город." },
+  { id: "quick-10", cat: "quick", intent: "question", text: "Ну что, начнём?" },
 ]);
 
 export const QUICK_BY_ID = Object.freeze(
