@@ -82,7 +82,7 @@ export function createCreateScreen(ctx) {
                 <button class="mode-option ${mode === "local" ? "is-active" : ""}" type="button" data-create-mode="local" role="radio" aria-checked="${mode === "local" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 20 })}</span>
                   <span>
-                    <b>Порты</b>
+                    <b>Это устройство</b>
                     <span>Вкладки этого браузера. Без сервера: комната живёт, пока открыта хотя бы одна вкладка.</span>
                   </span>
                 </button>

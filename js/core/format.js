@@ -134,7 +134,7 @@ export function downloadText(filename, text, mime = "text/plain") {
 
 export function friendlyError(error) {
   const raw = textOf(error);
-  if (/Failed to fetch|WebSocket|network/i.test(raw)) return "Связь потеряна. Проверь сеть или порты этого браузера.";
+  if (/Failed to fetch|WebSocket|network/i.test(raw)) return "Связь потеряна. Проверь сеть или режим этого устройства.";
   if (/quota/i.test(raw)) return "Хранилище переполнено. Очисти кэш в настройках.";
   return raw || "Что-то пошло не так.";
 }

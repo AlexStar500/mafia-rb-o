@@ -73,7 +73,7 @@ export function createRoomsScreen(ctx) {
           <span class="eyebrow">${icon("users", { size: 13 })} Живые комнаты</span>
           <h1 class="page-title">Найдите свой город</h1>
           <p class="page-sub">
-            «Порты» живут во вкладках этого браузера. «По IP» — хост запускает сервер, остальные заходят по его адресу, хоть из другой сети.
+            «Это устройство» живут во вкладках этого браузера. «По IP» — хост запускает сервер, остальные заходят по его адресу, хоть из другой сети.
             «Онлайн» идёт через relay и работает с любого устройства.
           </p>
         </div>
@@ -103,7 +103,7 @@ export function createRoomsScreen(ctx) {
             <span class="field__label">Источник</span>
             <div class="seg" role="group" aria-label="Источник комнат">
               <button class="seg__btn is-active" type="button" data-filter-mode="all">Все</button>
-              <button class="seg__btn" type="button" data-filter-mode="local">Порты</button>
+              <button class="seg__btn" type="button" data-filter-mode="local">Это устройство</button>
               <button class="seg__btn" type="button" data-filter-mode="online">Сеть</button>
             </div>
           </div>
@@ -131,7 +131,7 @@ export function createRoomsScreen(ctx) {
         <p class="field__hint">
           ${icon("info", { size: 13 })}
           ${app.settings.relayUrl
-            ? "Онлайн-комнаты видны всем, у кого есть адрес relay. Порты видны только в этом браузере."
+            ? "Онлайн-комнаты видны всем, у кого есть адрес relay. Комнаты этого устройства видны только в этом браузере."
             : "Онлайн-режим выключен: без relay устройства не увидят друг друга. Укажите relay в настройках, чтобы играть по сети."}
         </p>
         <button class="btn btn--quiet btn--sm" type="button" data-go-settings>${icon("settings", { size: 15 })} Настройки сети</button>
@@ -155,7 +155,7 @@ export function createRoomsScreen(ctx) {
       statusNode,
       html`<span>${loading ? "Ищем комнаты…" : `${filtered.length} ${pluralRu(filtered.length, ["комната", "комнаты", "комнат"])}`}</span>
         ${filtered.length > visible.length ? html`<span class="rooms-status__counts">показано ${visible.length}</span>` : ""}
-        <span class="rooms-status__counts">Порты ${localCount} · Сеть ${onlineCount}</span>
+        <span class="rooms-status__counts">Это устройство ${localCount} · Сеть ${onlineCount}</span>
         ${relayNote}`,
     );
 

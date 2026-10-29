@@ -60,7 +60,7 @@ export function createJoinScreen(ctx) {
               <div class="mode-picker mode-picker--compact" role="radiogroup" aria-label="Способ подключения">
                 <button class="mode-option ${mode === "local" ? "is-active" : ""}" type="button" data-join-mode="local" role="radio" aria-checked="${mode === "local" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 18 })}</span>
-                  <span><b>Порты</b><span>Вкладки этого браузера, без сервера</span></span>
+                  <span><b>Это устройство</b><span>Вкладки этого браузера, без сервера</span></span>
                 </button>
                 <button class="mode-option ${mode === "lan" ? "is-active" : ""}" type="button" data-join-mode="lan" role="radio" aria-checked="${mode === "lan" ? "true" : "false"}">
                   <span class="mode-option__icon">${icon("monitor", { size: 18 })}</span>
@@ -121,7 +121,7 @@ export function createJoinScreen(ctx) {
             <div class="panel__body join-help">
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("monitor", { size: 18 })}</span>
-                <div><b>Порты</b><p>Комната живёт во вкладках этого браузера. Сервер не нужен — работает сразу.</p></div>
+                <div><b>Это устройство</b><p>Комната живёт во вкладках этого браузера. Сервер не нужен — работает сразу.</p></div>
               </div>
               <div class="join-help__row">
                 <span class="join-help__icon">${icon("monitor", { size: 18 })}</span>

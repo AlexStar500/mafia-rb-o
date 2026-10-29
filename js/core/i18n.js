@@ -29,15 +29,15 @@ const OVERRIDES = Object.freeze({
   "Ваша роль · Мафия": "Your role · Mafia",
   "Мирный житель": "Civilian",
   "Мирные жители": "Civilians",
-  "Порты": "Tabs",
-  "порты": "tabs",
-  "«Порты»": "“Tabs”",
+  "Это устройство": "This device",
+  "это устройство": "this device",
+  "«Это устройство»": "“This device”",
   "Комната в портах создана.": "Tab room created.",
   "Комната живёт во вкладках этого браузера. Сервер не нужен — работает сразу.":
     "The room lives in tabs of this browser. No server needed — it works right away.",
-  "Да. Тренировка с ботами и «Порты» работают полностью в браузере. Порты — это комнаты в соседних вкладках одного браузера. Чтобы играть с других устройств, есть «По IP» (хост запускает npm start, остальные заходят по его адресу; с пробросом порта подключаются из другой сети) и «Онлайн» через relay. Статический хостинг сам по себе не соединяет устройства.":
+  "Да. Тренировка с ботами и «Это устройство» работают полностью в браузере. Это устройство — это комнаты в соседних вкладках одного браузера. Чтобы играть с других устройств, есть «По IP» (хост запускает npm start, остальные заходят по его адресу; с пробросом порта подключаются из другой сети) и «Онлайн» через relay. Статический хостинг сам по себе не соединяет устройства.":
     "Yes. Bot training and Tabs work entirely in the browser. Tabs are rooms in other tabs of the same browser. To play from other devices, use “By IP” (the host runs npm start and the others open its address; with port forwarding they can connect from another network) and “Online” via the relay. Static hosting alone does not connect devices.",
-  "«Порты» живут во вкладках этого браузера. «По IP» — хост запускает сервер, остальные заходят по его адресу, хоть из другой сети. «Онлайн» идёт через relay и работает с любого устройства.":
+  "«Это устройство» живут во вкладках этого браузера. «По IP» — хост запускает сервер, остальные заходят по его адресу, хоть из другой сети. «Онлайн» идёт через relay и работает с любого устройства.":
     "“Tabs” live in tabs of this browser. “By IP” means the host runs a server and the others open its address, even from another network. “Online” goes through the relay and works from any device.",
   "Мафия ×1 убрана: состав не помещается в город.": "Mafia ×1 removed: the roster does not fit the town.",
   "Шериф": "Sheriff",
@@ -192,10 +192,10 @@ function applyPatterns(text) {
   out = out.replace(/живых/gi, "alive");
   out = out.replace(/мёртв/gi, "dead");
   out = out.replace(/мертв/gi, "dead");
-  out = out.replace(/«Порты»/g, "“Tabs”");
-  out = out.replace(/Порты/g, "Tabs");
-  out = out.replace(/порты/g, "tabs");
-  out = out.replace(/в портах/gi, "in tabs");
+  out = out.replace(/«Это устройство»/g, "“This device”");
+  out = out.replace(/Это устройство/g, "This device");
+  out = out.replace(/это устройство/g, "this device");
+  out = out.replace(/в портах/gi, "in this device");
   out = out.replace(/Мирный/g, "Civilian");
   out = out.replace(/Мирные/g, "Civilians");
   out = out.replace(/Близнец/g, "Twin");

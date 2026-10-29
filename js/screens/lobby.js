@@ -165,7 +165,7 @@ export function createLobbyScreen(ctx, initialView) {
         ? html`<span class="badge badge--town">${icon("wifi", { size: 11 })} Онлайн</span>`
         : session.mode === "lan"
           ? html`<span class="badge badge--town">${icon("monitor", { size: 11 })} По IP</span>`
-          : html`<span class="badge badge--muted">${icon("monitor", { size: 11 })} Порты</span>`;
+          : html`<span class="badge badge--muted">${icon("monitor", { size: 11 })} Это устройство</span>`;
     mount(
       head,
       html`<header class="lobby-head panel panel--gold">
@@ -192,7 +192,7 @@ export function createLobbyScreen(ctx, initialView) {
         </div>
       </header>
       ${session.mode === "local"
-        ? html`<div class="notice lobby-local-note">${icon("info", { size: 16 })}<span>Порты живут в этом браузере. Откройте ссылку/код в другой вкладке — и город соберётся. Для других устройств выберите «По IP» или «Онлайн».</span></div>`
+        ? html`<div class="notice lobby-local-note">${icon("info", { size: 16 })}<span>Комнаты этого устройства живут в этом браузере. Откройте ссылку/код в другой вкладке — и город соберётся. Для других устройств выберите «По IP» или «Онлайн».</span></div>`
         : session.mode === "lan"
           ? html`<div class="notice lobby-local-note">${icon("monitor", { size: 16 })}<span>По IP: друзья открывают ссылку с адресом компьютера-хоста. Для подключения из другой сети включите проброс порта или Cloudflare Tunnel.</span></div>`
           : html`<div class="notice lobby-local-note">${icon("wifi", { size: 16 })}<span>Онлайн-комната: отправьте ссылку друзьям. Relay передаёт только игровые сообщения, не роли.</span></div>`}`,

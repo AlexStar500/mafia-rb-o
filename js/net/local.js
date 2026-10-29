@@ -239,7 +239,7 @@ export class LocalGuestAdapter extends Emitter {
 
   connect() {
     if (!this.channel) {
-      return Promise.reject(new Error("Браузер не поддерживает порты (BroadcastChannel)."));
+      return Promise.reject(new Error("Браузер не поддерживает это устройство (BroadcastChannel)."));
     }
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -368,6 +368,6 @@ export function createLocalId() {
 
 export const LOCAL_ROOM_LABELS = Object.freeze({
   source: "local",
-  label: "Порты",
+  label: "Это устройство",
   hint: "Комнаты в соседних вкладках этого браузера",
 });

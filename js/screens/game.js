@@ -270,7 +270,7 @@ export function createGameScreen(ctx, initialView) {
           : session.spectatorOnly
             ? html`<span class="badge badge--violet">${icon("eye", { size: 10 })} наблюдение</span>`
             : session.mode === "local"
-              ? html`<span class="badge badge--muted">${icon("monitor", { size: 10 })} порты</span>`
+              ? html`<span class="badge badge--muted">${icon("monitor", { size: 10 })} это устройство</span>`
               : html`<span class="badge badge--muted">${icon("bot", { size: 10 })} тренировка</span>`;
     const spectatorControls = session.spectatorOnly
       ? html`<div class="hud-speed" role="group" aria-label="Темп игры">

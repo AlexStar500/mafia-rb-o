@@ -4,7 +4,7 @@ import { icon } from "../ui/icons.js";
 const MODES = Object.freeze([
   {
     icon: "monitor",
-    title: "Порты",
+    title: "Это устройство",
     subtitle: "Один браузер, без сервера",
     text: "Комната живёт во вкладках этого браузера. Откройте игру в соседней вкладке и войдите по коду. Сервер не нужен — работает сразу.",
     steps: ["Создайте комнату", "Скопируйте код или ссылку", "Откройте их в другой вкладке"],
@@ -50,7 +50,7 @@ export function createServerScreen(ctx) {
           <span class="rules-hero__stamp">${icon("shield", { size: 22 })}</span>
           <strong>Без сервера — тоже игра</strong>
           <dl class="rules-facts">
-            <div><dt>Порты</dt><dd>0 настроек</dd></div>
+            <div><dt>Это устройство</dt><dd>0 настроек</dd></div>
             <div><dt>По IP</dt><dd>npm start</dd></div>
             <div><dt>Онлайн</dt><dd>relay</dd></div>
           </dl>
@@ -132,7 +132,7 @@ export function createServerScreen(ctx) {
               <span class="faq-item__chevron">${icon("chevron", { size: 16 })}</span>
             </summary>
             <div class="faq-item__a">
-              <p>Да — режим «Порты» работает во вкладках одного браузера без единого сервера. Это удобно для тренировки и проверки ролей.</p>
+              <p>Да — режим «Это устройство» работает во вкладках одного браузера без единого сервера. Это удобно для тренировки и проверки ролей.</p>
             </div>
           </details>
         </div>

@@ -23,7 +23,7 @@ export function roomModeText(room) {
   if (!room) return "";
   if (room.spectatorOnly) return "Боты";
   if (room.lan) return "По IP";
-  return room.source === "online" ? "Онлайн" : "Порты";
+  return room.source === "online" ? "Онлайн" : "Это устройство";
 }
 
 function sortRooms(rooms) {

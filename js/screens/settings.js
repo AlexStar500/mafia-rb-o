@@ -61,7 +61,6 @@ export function createSettingsScreen(ctx) {
           <section class="panel settings-card" id="settings-language">
             <div class="panel__head">
               <span class="panel__title">${icon("globe", { size: 15 })} Язык интерфейса</span>
-              <span class="muted">Interface language</span>
             </div>
             <div class="panel__body">
               <div class="setting-row">
@@ -280,7 +279,7 @@ export function createSettingsScreen(ctx) {
                 ${icon("info", { size: 16 })}
                 <span>
                   Для других устройств есть два пути: «По IP» (<span class="mono">npm start</span> у хоста, остальные заходят по его адресу)
-                  или онлайн-relay. Без сервера работают тренировка и «Порты» — комнаты в соседних вкладках этого браузера.
+                  или онлайн-relay. Без сервера работают тренировка и «Это устройство» — комнаты в соседних вкладках этого браузера.
                 </span>
               </div>
               <label class="field settings-relay" for="settings-relay">
@@ -309,7 +308,7 @@ export function createSettingsScreen(ctx) {
               <div class="settings-diagnostics">
                 <div>
                   <span class="field__label">Режим</span>
-                  <p>${settings.relayUrl ? "Порты и онлайн-комнаты" : "Только порты этого браузера"}</p>
+                  <p>${settings.relayUrl ? "Это устройство и онлайн-комнаты" : "Только это устройство"}</p>
                 </div>
                 <div>
                   <span class="field__label">Установка</span>
@@ -617,7 +616,7 @@ export function createSettingsScreen(ctx) {
           if (input) input.value = "";
           settings = app.updateSettings({ relayUrl: "" }) ?? settings;
           const status = qs("[data-relay-status]", root);
-          if (status) status.textContent = "Онлайн отключён. Работают порты этого браузера.";
+          if (status) status.textContent = "Онлайн отключён. Работает режим этого устройства.";
           app.toast("Онлайн отключён.", { tone: "warn" });
           return;
         }
