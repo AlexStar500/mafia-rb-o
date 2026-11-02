@@ -250,14 +250,13 @@ export function createMenuScreen(ctx) {
         }
         const download = target.closest("[data-download-windows]");
         if (download) {
-          // Direct download of the file that ships next to the site.
-          const url = asset("download/mafia-windows.exe");
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = "mafia-windows.exe";
-          document.body.append(link);
-          link.click();
-          link.remove();
+          // Direct download from the latest GitHub release (no page navigation,
+          // no LFS bandwidth limit).
+          window.open(
+            "https://github.com/AlexStar500/mafia-rb-o/releases/latest/download/mafia-windows.exe",
+            "_blank",
+            "noopener",
+          );
           app.playSfx("click");
         }
       });
