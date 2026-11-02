@@ -13,10 +13,8 @@ function localRelayDefault() {
   } catch {
     // ignore
   }
-  // The Workers.dev relay is the primary public relay: it stays reachable in
-  // regions that block the raw *.vercel.app edges and Cloudflare-proxied
-  // custom domains.
-  return PUBLIC_HTTP_RELAY_WORKER;
+  // Vercel is the primary relay; the Workers.dev proxy is the fallback.
+  return PUBLIC_HTTP_RELAY;
 }
 
 function summarySetup(config) {

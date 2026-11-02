@@ -6,11 +6,11 @@ import {
 
 /**
  * Public room relay. The game itself is a static site (GitHub Pages / custom
- * domain); a Cloudflare Worker hosts this small HTTP relay for online rooms.
+ * domain); the relay runs on Vercel. A Cloudflare Worker is kept as a fallback
+ * proxy for networks where the raw `*.vercel.app` edges are blocked.
  *
- * `PUBLIC_HTTP_RELAY_WORKER` is the primary relay: `*.workers.dev` is reachable
- * on networks where the raw `*.vercel.app` edges (and even a Cloudflare-proxied
- * custom domain) are blocked. The others remain as fallbacks.
+ * `PUBLIC_HTTP_RELAY` (Vercel) is tried first — one hop, lowest latency — and
+ * `PUBLIC_HTTP_RELAY_WORKER` is the no-VPN fallback that proxies to Vercel.
  */
 export const PUBLIC_HTTP_RELAY = "https://mafiarbovercel.vercel.app/api";
 export const PUBLIC_HTTP_RELAY_CUSTOM = "https://relay.mafia.rb-o.ru/api";
@@ -36,10 +36,10 @@ async function probeHttpBase(base, timeout = 1200) {
 }
 
 async function publicHttpRelay() {
-  for (const base of [PUBLIC_HTTP_RELAY_WORKER, PUBLIC_HTTP_RELAY_CUSTOM, PUBLIC_HTTP_RELAY]) {
+  for (const base of [PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_WORKER, PUBLIC_HTTP_RELAY_CUSTOM]) {
     if (await probeHttpBase(base)) return base;
   }
-  return PUBLIC_HTTP_RELAY_WORKER;
+  return PUBLIC_HTTP_RELAY;
 }
 
 
