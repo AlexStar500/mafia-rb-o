@@ -252,7 +252,7 @@ export function createMenuScreen(ctx) {
         if (download) {
           // Direct download from the latest GitHub release (no page navigation).
           window.open(
-            "https://github.com/AlexStar500/mafia-rb-o/releases/latest/download/mafia-windows.zip",
+            "https://github.com/AlexStar500/mafia-rb-o/releases/latest/download/mafia-windows.exe",
             "_blank",
             "noopener",
           );
