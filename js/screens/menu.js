@@ -147,6 +147,14 @@ export function createMenuScreen(ctx) {
           </span>
           ${icon("forward", { size: 18 })}
         </button>
+        <button class="menu-card menu-card--download" type="button" data-download-windows>
+          <span class="menu-card__icon">${icon("download", { size: 22 })}</span>
+          <span class="menu-card__body">
+            <b>Скачать для Windows</b>
+            <span>Десктопная версия — сервер для друзей запускается в один клик.</span>
+          </span>
+          ${icon("download", { size: 18 })}
+        </button>
       </section>
 
       <section class="menu__bots">
@@ -239,6 +247,11 @@ export function createMenuScreen(ctx) {
         if (bot) {
           const persona = BOT_ROSTER.find((entry) => entry.id === bot.dataset.bot);
           if (persona) botModal(persona);
+        }
+        const download = target.closest("[data-download-windows]");
+        if (download) {
+          window.open("https://github.com/AlexStar500/mafia-rb-o/releases/latest", "_blank", "noopener");
+          app.playSfx("click");
         }
       });
 

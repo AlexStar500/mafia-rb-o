@@ -278,7 +278,7 @@ export function createSettingsScreen(ctx) {
               <div class="notice">
                 ${icon("info", { size: 16 })}
                 <span>
-                  Для других устройств есть два пути: «По IP» (<span class="mono">npm start</span> у хоста, остальные заходят по его адресу)
+                  Для других устройств есть два пути: «По IP» (Windows-версия с кнопки «Скачать» на главной, или <span class="mono">npm start</span> у хоста)
                   или онлайн-relay. Без сервера работают тренировка и «Это устройство» — комнаты в соседних вкладках этого браузера.
                 </span>
               </div>
