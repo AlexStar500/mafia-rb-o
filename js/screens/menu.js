@@ -250,7 +250,14 @@ export function createMenuScreen(ctx) {
         }
         const download = target.closest("[data-download-windows]");
         if (download) {
-          window.open("https://github.com/AlexStar500/mafia-rb-o/raw/main/download/mafia-windows.exe", "_blank", "noopener");
+          // Direct download of the file that ships next to the site.
+          const url = asset("download/mafia-windows.exe");
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "mafia-windows.exe";
+          document.body.append(link);
+          link.click();
+          link.remove();
           app.playSfx("click");
         }
       });
