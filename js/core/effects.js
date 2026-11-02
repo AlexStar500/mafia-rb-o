@@ -59,29 +59,34 @@ export function probeFrameRate(duration = 1400) {
 }
 
 /**
- * Pick a budget once per page load: weak hardware is downgraded up front, the
- * rest is measured after the first paint. The user's explicit choice wins.
+ * Pick a budget once per page load. `auto` now starts on the minimum budget
+ * and only upgrades when the hardware is clearly capable. This is the reverse
+ * of the old behaviour: turning effects on and then tearing them down a moment
+ * later is what caused the endless flicker on Chromium.
  */
-export function autoTuneEffects(settings = {}, { onLite } = {}) {
+export function autoTuneEffects(settings = {}, { onLite, onUpgrade } = {}) {
   const mode = normalizeEffectsMode(settings.effects);
-  applyEffects(settings);
-  if (mode !== "auto") return;
-
-  const cores = Number(navigator.hardwareConcurrency) || 8;
-  const memory = Number(navigator.deviceMemory) || 8;
-  if (cores <= 4 || memory <= 4) {
-    applyEffects(settings, { lite: true });
-    onLite?.();
+  if (mode !== "auto") {
+    applyEffects(settings);
     return;
   }
+
+  // Auto starts minimal, synchronously, before the first paint.
+  applyEffects(settings, { lite: true });
+  onLite?.();
+
+  const cores = Number(navigator.hardwareConcurrency) || 0;
+  const memory = Number(navigator.deviceMemory) || 0;
+  if (cores > 0 && cores <= 4) return;
+  if (memory > 0 && memory <= 4) return;
 
   const schedule = typeof requestIdleCallback === "function" ? requestIdleCallback : (fn) => setTimeout(fn, 1200);
   schedule(() => {
     void probeFrameRate(1400).then((fps) => {
       // 0 means "could not measure" (hidden tab, throttling) — leave it alone.
-      if (fps > 0 && fps < 50) {
-        applyEffects(settings, { lite: true });
-        onLite?.();
+      if (fps >= 50) {
+        applyEffects(settings);
+        onUpgrade?.();
       }
     });
   });

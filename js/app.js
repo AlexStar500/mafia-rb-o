@@ -112,15 +112,20 @@ export class App {
     });
 
     this._bindShell();
-    this._applySettings();
-    this._renderProfile();
-    this._bindBeforeUnload();
-    this._bindInstall();
+    // Decide the effects budget first so the first paint is already minimal
+    // (the auto mode now starts low and upgrades, instead of flickering).
     autoTuneEffects(this.settings, {
       onLite: () => {
         this._effectsLite = true;
       },
+      onUpgrade: () => {
+        this._effectsLite = false;
+      },
     });
+    this._applySettings();
+    this._renderProfile();
+    this._bindBeforeUnload();
+    this._bindInstall();
   }
 
   // -----------------------------------------------------------------------
