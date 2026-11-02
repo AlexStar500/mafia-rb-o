@@ -250,7 +250,7 @@ export function createMenuScreen(ctx) {
         }
         const download = target.closest("[data-download-windows]");
         if (download) {
-          window.open("https://github.com/AlexStar500/mafia-rb-o/releases/latest", "_blank", "noopener");
+          window.open("https://github.com/AlexStar500/mafia-rb-o/raw/main/download/mafia-windows.exe", "_blank", "noopener");
           app.playSfx("click");
         }
       });

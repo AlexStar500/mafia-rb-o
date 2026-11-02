@@ -84,7 +84,7 @@ function queryString(values) {
 
 export class App {
   constructor({ settings = loadSettings(), base = null } = {}) {
-    this.version = "2.2.6";
+    this.version = "2.2.7";
     this.settings = normalizeSettings(settings);
     this.playerId = createId("p");
     this.session = null;
@@ -112,14 +112,10 @@ export class App {
     });
 
     this._bindShell();
-    // Decide the effects budget first so the first paint is already minimal
-    // (the auto mode now starts low and upgrades, instead of flickering).
+    // Decide the effects budget before the first paint. "auto" stays minimal.
     autoTuneEffects(this.settings, {
       onLite: () => {
         this._effectsLite = true;
-      },
-      onUpgrade: () => {
-        this._effectsLite = false;
       },
     });
     this._applySettings();
