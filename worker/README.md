@@ -1,55 +1,43 @@
-# MAFIA relay — Cloudflare Worker + Durable Objects
+# MAFIA relay — Cloudflare Worker (HTTP proxy к Vercel)
 
-Этот воркер заменяет и Vercel, и KV-версию: каждая комната — отдельный
-**Durable Object** (строгая консистентность, нет гонок, комнаты изолированы),
-а публичный список комнат держится в лёгком KV-индексе.
+Это простой **прокси**: браузер ходит на `*.workers.dev` (он доступен там, где
+Vercel заблокирован), а воркер просто пересылает запросы на Vercel. Вся логика
+комнат остаётся на Vercel (`api/index.mjs`).
 
-Нужны два binding'а:
-- **MAFIA_DO** — Durable Object namespace (класс `RoomObject`).
-- **MAFIA_ROOMS** — KV namespace (индекс публичных комнат).
+**Без KV, без Durable Objects, без bindings, без wrangler.**
 
-## Вариант A — через wrangler (проще для DO)
+## Как выложить (только дашборд)
 
-1. `npm i -g wrangler` (если ещё нет), затем `wrangler login`.
-2. Создай KV namespace и вставь его id в `wrangler.toml` (поле `id`).
-   Либо `wrangler kv namespace create MAFIA_ROOMS` — вернёт id.
-3. В папке `worker/` запусти `wrangler deploy`.
+1. Cloudflare → **Workers & Pages** → **Create** → Worker (или открой свой).
+2. Вставь код `worker.js` целиком в редактор.
+3. Нажми **Deploy**.
 
-Класс `RoomObject` создаётся автоматически (новые SQLite-DO с авто-миграцией).
-
-## Вариант B — через дашборд (без wrangler)
-
-1. Cloudflare → **Workers & Pages → KV** → создай namespace `MAFIA_ROOMS`.
-2. Cloudflare → **Workers & Pages → Durable Objects** → создай namespace
-   (или используй «авто-миграцию» при первом деплое — для SQLite-DO).
-3. Открой Worker → **Settings → Variables**:
-   - KV Namespace Binding: имя `MAFIA_ROOMS` → твой namespace.
-   - Durable Object Binding: имя `MAFIA_DO` → namespace, класс `RoomObject`.
-4. Вставь код `worker.js` в редактор → **Deploy**.
-
-> Если в дашборде DO-класс требует «migration» и не даёт создать binding без
-> wrangler — проще использовать вариант A (одна команда `wrangler deploy`).
+Всё. Никаких переменных и bindings не нужно.
 
 ## Проверка
 
 ```
 https://mafia.aleshkalarin2002.workers.dev/api/health
 ```
-→ `{"ok":true,"service":"mafia-relay","http":true,"protocol":2,...}`
+Должен вернуть:
+```json
+{"ok":true,"service":"mafia-relay","http":true,"protocol":2,"rooms":0,"uptime":0}
+```
 
-## Почему DO, а не KV
+Если вернул JSON — прокси работает, и игра уже ходит через него (адрес
+`https://mafia.aleshkalarin2002.workers.dev/api` прописан в `js/net/auto.js`
+как основной публичный relay).
 
-- **KV** — eventual consistency + лимиты на запись (~1000/день). Хватает на
-  пару комнат, дальше упирается.
-- **Durable Objects** — строгая консистентность, состояние комнаты в памяти
-  объекта (без гонок чтения-модификации-записи), комнаты масштабируются
-  независимо. Для 100 одновременных комнат нужен именно DO.
-- KV остаётся только как дешёвый индекс списка публичных комнат (редкие
-  записи на create/meta/close — не на каждый поллинг).
+## Как это работает
 
-## Про лимиты
+```
+игрок → https://mafia.aleshkalarin2002.workers.dev/api/health
+      → (worker пересылает) https://mafiarbovercel.vercel.app/api/health
+      → Vercel relay (api/index.mjs)
+```
 
-100 активных комнат × 8 игроков × поллинг — это тысячи запросов в минуту.
-Бесплатный план Workers (~100k запросов/день) такое не потянет; для реальной
-нагрузки нужен платный Cloudflare (или VPS). DO решает проблему консистентности
-и масштабируемости хранения, но не отменяет лимит на число запросов.
+## Ограничение
+
+Комнаты на Vercel живут в памяти инстанса функции. Для дружеских партий этого
+хватает (тёплый инстанс переиспользуется). При большой нагрузке Vercel может
+разнести комнаты по разным инстансам — тогда комнаты друг друга не увидят.
