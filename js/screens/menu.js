@@ -250,10 +250,9 @@ export function createMenuScreen(ctx) {
         }
         const download = target.closest("[data-download-windows]");
         if (download) {
-          // Direct download from the latest GitHub release (no page navigation,
-          // no LFS bandwidth limit).
+          // Direct download from the latest GitHub release (no page navigation).
           window.open(
-            "https://github.com/AlexStar500/mafia-rb-o/releases/latest/download/mafia-windows.exe",
+            "https://github.com/AlexStar500/mafia-rb-o/releases/latest/download/mafia-windows.zip",
             "_blank",
             "noopener",
           );
