@@ -5,6 +5,13 @@ import { WebSocket } from "ws";
 import { attachRelay } from "../server/relay.mjs";
 import { OnlineGuestAdapter } from "../js/net/online.js";
 
+// The browser adapter talks to the platform's global WebSocket. Node 20 (the
+// CI matrix) does not ship one, so fall back to the `ws` client, which speaks
+// the same event API (addEventListener, string event.data).
+if (typeof globalThis.WebSocket !== "function") {
+  globalThis.WebSocket = WebSocket;
+}
+
 function client(ws) {
   const queue = [];
   const waiters = [];
