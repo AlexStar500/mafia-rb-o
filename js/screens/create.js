@@ -2,7 +2,7 @@ import { html, qs, mount } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { RoomForm } from "../ui/roomForm.js";
 import { normalizeRelayUrl } from "../core/security.js";
-import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM, PUBLIC_HTTP_RELAY_WORKER, resolveRelayForMode } from "../net/auto.js";
+import { probeSameOriginRelay, PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_CUSTOM, PUBLIC_WS_RELAY, PUBLIC_WS_RELAY_DIRECT, resolveRelayForMode } from "../net/auto.js";
 import { normalizeRoomConfig, computeRoleSetup, ROLES } from "../data/roles.js";
 
 function localRelayDefault() {
@@ -13,8 +13,8 @@ function localRelayDefault() {
   } catch {
     // ignore
   }
-  // Vercel is the primary relay; the Workers.dev proxy is the fallback.
-  return PUBLIC_HTTP_RELAY;
+  // The public WebSocket relay on Vercel, connected directly.
+  return PUBLIC_WS_RELAY_DIRECT;
 }
 
 function summarySetup(config) {
@@ -253,9 +253,13 @@ export function createCreateScreen(ctx) {
               return;
             }
             // A prefilled public address means "auto": probe the direct Vercel
-            // edge and the custom domain, so a blocked edge still works.
+            // edge and the custom domain.
             const isPublicDefault =
-              !typedRelay || typedRelay === PUBLIC_HTTP_RELAY || typedRelay === PUBLIC_HTTP_RELAY_CUSTOM || typedRelay === PUBLIC_HTTP_RELAY_WORKER;
+              !typedRelay ||
+              typedRelay === PUBLIC_HTTP_RELAY ||
+              typedRelay === PUBLIC_HTTP_RELAY_CUSTOM ||
+              typedRelay === PUBLIC_WS_RELAY ||
+              typedRelay === PUBLIC_WS_RELAY_DIRECT;
             relayUrl = isPublicDefault ? await resolveRelayForMode("online", "") : typedRelay;
             if (!relayUrl) {
               error.textContent = "Relay не найден. Укажите адрес вручную.";

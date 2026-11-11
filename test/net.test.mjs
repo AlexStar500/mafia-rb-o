@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { WebSocket } from "ws";
 import { attachRelay } from "../server/relay.mjs";
+import { OnlineGuestAdapter } from "../js/net/online.js";
 
 function client(ws) {
   const queue = [];
@@ -153,6 +154,85 @@ test("relay: host, guest, relay, meta, rooms, kick and close", async (t) => {
   assert.equal(closed.reason, "Конец");
 });
 
+test("relay: dropped guests and hosts resume within the grace window", async (t) => {
+  const relay = await startRelay();
+  t.after(() => relay.close());
+
+  const host = await connect(relay.url);
+  t.after(() => host.close());
+  host.send({ type: "create", hostName: "Хост", meta: { public: false } });
+  const hostWelcome = await host.next((frame) => frame.type === "welcome");
+  assert.match(hostWelcome.token, /^t_/);
+
+  const guest = await connect(relay.url);
+  t.after(() => guest.close());
+  guest.send({ type: "join", room: hostWelcome.room, name: "Гость" });
+  const guestWelcome = await guest.next((frame) => frame.type === "welcome");
+  assert.match(guestWelcome.token, /^t_/);
+  await host.next((frame) => frame.type === "peer-join");
+
+  // Drop the guest hard (no close handshake, like a network cut).
+  guest.ws.terminate();
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
+  // The host must not hear about a leave during the grace window.
+  const leaveHeard = await Promise.race([
+    host.next((frame) => frame.type === "peer-leave").then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 300)),
+  ]);
+  assert.equal(leaveHeard, false);
+
+  // The guest resumes its seat on a fresh socket with the original token.
+  const guest2 = await connect(relay.url);
+  t.after(() => guest2.close());
+  guest2.send({ type: "resume", room: hostWelcome.room, peerId: guestWelcome.selfId, token: guestWelcome.token });
+  const resumed = await guest2.next((frame) => frame.type === "welcome");
+  assert.equal(resumed.resumed, true);
+  assert.equal(resumed.selfId, guestWelcome.selfId);
+
+  host.send({ type: "relay", to: guestWelcome.selfId, payload: { type: "state", view: { phase: "day" } } });
+  const state = await guest2.next((frame) => frame.type === "relay");
+  assert.equal(state.payload.view.phase, "day");
+
+  // Now the host drops hard; the room survives the grace window.
+  host.ws.terminate();
+  await new Promise((resolve) => setTimeout(resolve, 120));
+
+  const host2 = await connect(relay.url);
+  t.after(() => host2.close());
+  host2.send({ type: "resume", room: hostWelcome.room, peerId: hostWelcome.selfId, token: hostWelcome.token });
+  const hostResumed = await host2.next((frame) => frame.type === "welcome");
+  assert.equal(hostResumed.host, true);
+  assert.equal(hostResumed.resumed, true);
+
+  guest2.send({ type: "relay", to: hostWelcome.selfId, payload: { type: "action", kind: "ready" } });
+  const action = await host2.next((frame) => frame.type === "relay");
+  assert.equal(action.from, guestWelcome.selfId);
+  assert.equal(action.payload.kind, "ready");
+});
+
+test("relay: resume with a wrong token or a dead room is denied", async (t) => {
+  const relay = await startRelay();
+  t.after(() => relay.close());
+
+  const host = await connect(relay.url);
+  t.after(() => host.close());
+  host.send({ type: "create", hostName: "Хост", meta: { public: false } });
+  const welcome = await host.next((frame) => frame.type === "welcome");
+
+  const stranger = await connect(relay.url);
+  t.after(() => stranger.close());
+  stranger.send({ type: "resume", room: welcome.room, peerId: welcome.selfId, token: "t_wrong" });
+  const denied = await stranger.next((frame) => frame.type === "denied");
+  assert.match(denied.reason, /сессия/i);
+
+  const nobody = await connect(relay.url);
+  t.after(() => nobody.close());
+  nobody.send({ type: "resume", room: "ZZZ999", peerId: welcome.selfId, token: welcome.token });
+  const lost = await nobody.next((frame) => frame.type === "denied");
+  assert.match(lost.reason, /не найдена/i);
+});
+
 test("relay: prune keeps idle guests connected", async (t) => {
   const app = await startRelay();
   t.after(() => app.close());
@@ -228,4 +308,95 @@ test("relay: guest cannot relay to another guest and bad sizes are rejected", as
   const code = await closed;
   assert.equal(code, 1009);
   assert.equal(firstWelcome.room, hostWelcome.room);
+});
+
+test("relay: a burst of fast messages throttles without killing the socket", async (t) => {
+  const relay = await startRelay();
+  t.after(() => relay.close());
+
+  const host = await connect(relay.url);
+  t.after(() => host.close());
+  host.send({ type: "create", hostName: "Хост", meta: { public: false } });
+  const hostWelcome = await host.next((frame) => frame.type === "welcome");
+
+  const guest = await connect(relay.url);
+  t.after(() => guest.close());
+  guest.send({ type: "join", room: hostWelcome.room, name: "Гость" });
+  const guestWelcome = await guest.next((frame) => frame.type === "welcome");
+  await host.next((frame) => frame.type === "peer-join");
+
+  // Flood far past the per-socket budget: the relay must answer with a
+  // transient throttle frame, never a fatal deny, and keep the socket open.
+  const flood = 200;
+  for (let i = 0; i < flood; i += 1) {
+    guest.send({
+      type: "relay",
+      to: hostWelcome.selfId,
+      payload: { type: "action", kind: "chat", text: `msg ${i}` },
+    });
+  }
+  const throttle = await guest.next((frame) => frame.type === "throttle");
+  assert.equal(typeof throttle.retryAfterMs, "number");
+  assert.ok(throttle.retryAfterMs > 0);
+  assert.equal(guest.ws.readyState, WebSocket.OPEN);
+
+  const denied = await Promise.race([
+    guest.next((frame) => frame.type === "denied").then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 250)),
+  ]);
+  assert.equal(denied, false, "a burst of fast messages must never be denied fatally");
+  assert.equal(guest.ws.readyState, WebSocket.OPEN);
+
+  // Once the budget refills, frames flow again on the very same socket.
+  await new Promise((resolve) => setTimeout(resolve, throttle.retryAfterMs + 150));
+  guest.send({
+    type: "relay",
+    to: hostWelcome.selfId,
+    payload: { type: "action", kind: "chat", text: "after pause" },
+  });
+  const action = await host.next((frame) => frame.type === "relay" && frame.payload.text === "after pause");
+  assert.equal(action.from, guestWelcome.selfId);
+  assert.equal(guest.ws.readyState, WebSocket.OPEN);
+});
+
+test("client adapter: a burst of fast messages is paced and fully delivered", async (t) => {
+  const relay = await startRelay();
+  t.after(() => relay.close());
+
+  const host = await connect(relay.url);
+  t.after(() => host.close());
+  host.send({ type: "create", hostName: "Хост", meta: { public: false } });
+  const hostWelcome = await host.next((frame) => frame.type === "welcome");
+
+  const adapter = new OnlineGuestAdapter({ url: relay.url, code: hostWelcome.room, name: "Гость" });
+  t.after(() => adapter.close());
+  const info = await adapter.connect();
+  assert.equal(info.code, hostWelcome.room);
+  const peerJoin = await host.next((frame) => frame.type === "peer-join");
+  assert.equal(peerJoin.peer.id, info.selfId);
+
+  // Fire far faster than the relay's per-socket budget: the adapter must pace
+  // the burst through its own queue so every frame reaches the host, in
+  // order, without tripping the relay or dying on a deny.
+  const total = 40;
+  for (let i = 0; i < total; i += 1) {
+    assert.equal(adapter.send({ type: "action", kind: "chat", text: `msg-${i}` }), true);
+  }
+
+  const seen = [];
+  while (seen.length < total) {
+    const frame = await host.next(
+      (item) => item.type === "relay" && /^msg-\d+$/.test(item.payload?.text ?? ""),
+      8000,
+    );
+    seen.push(frame.payload.text);
+  }
+  assert.deepEqual(seen, Array.from({ length: total }, (_, i) => `msg-${i}`));
+  assert.equal(adapter.closed, false);
+  assert.equal(adapter.connected, true);
+
+  // The connection must still be usable after the burst.
+  assert.equal(adapter.send({ type: "action", kind: "chat", text: "still alive" }), true);
+  const tail = await host.next((frame) => frame.type === "relay" && frame.payload.text === "still alive");
+  assert.equal(tail.from, info.selfId);
 });

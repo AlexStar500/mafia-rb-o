@@ -1,6 +1,7 @@
 import { Emitter } from "../core/events.js";
 import { textOf } from "../core/format.js";
 import {
+  RateLimiter,
   isValidAvatarId,
   isValidPlayerId,
   isValidRoomCode,
@@ -10,9 +11,14 @@ import {
   sanitizeNick,
 } from "../core/security.js";
 import {
+  CLIENT_BURST,
+  CLIENT_REFILL_PER_SEC,
   FRAME_TYPES,
   HEARTBEAT_MS,
+  HOST_BURST,
+  HOST_REFILL_PER_SEC,
   MAX_FRAME_CHARS,
+  PENDING_FRAME_LIMIT,
   PROTOCOL_VERSION,
   STALE_MS,
   cleanRoomMeta,
@@ -23,6 +29,7 @@ import {
   isHttpRelayUrl,
   isObject,
   normalizeRelayEndpoint,
+  payloadTooLarge,
   roomsUrl,
 } from "./protocol.js";
 
@@ -61,12 +68,19 @@ function openSocket(url, timeout = 7000) {
   });
 }
 
-function socketReason(event, fallback) {
-  if (event?.reason) return String(event.reason).slice(0, 160);
-  if (event?.code === 1000 || event?.code === 1001) return fallback;
-  if (event?.code === 1006) return "Соединение с relay потеряно.";
-  return fallback;
-}
+/**
+ * How long the adapter keeps trying to restore a dropped socket before giving
+ * up. Vercel closes every connection at the function's max duration, so a
+ * reconnect is a normal event, not a failure.
+ */
+const RECONNECT_BUDGET_MS = 90_000;
+const OUTBOX_LIMIT = 120;
+const QUEUEABLE_TYPES = new Set([
+  FRAME_TYPES.RELAY,
+  FRAME_TYPES.META,
+  FRAME_TYPES.KICK,
+  FRAME_TYPES.CLOSE,
+]);
 
 /** Common socket plumbing: bounded frames, heartbeat, single closed event. */
 class ChannelAdapter extends Emitter {
@@ -80,6 +94,14 @@ class ChannelAdapter extends Emitter {
     this.lastInbound = Date.now();
     this._closedEmitted = false;
     this._heartbeat = null;
+    this._resumeInfo = null;
+    this._resumeWaiter = null;
+    this._outbox = [];
+    this._reconnecting = false;
+    this._pending = [];
+    this._sendBudget = this._makeBudget();
+    this._throttleUntil = 0;
+    this._drainTimer = null;
   }
 
   get mode() {
@@ -90,24 +112,110 @@ class ChannelAdapter extends Emitter {
     return true;
   }
 
+  get reconnecting() {
+    return this._reconnecting;
+  }
+
   async _open() {
     if (!this.url) throw new Error("Relay не настроен. Укажите адрес в настройках.");
-    this.socket = await openSocket(this.url, this.timeout);
-    this.lastInbound = Date.now();
-    this.socket.addEventListener("message", (event) => this._onRaw(event.data));
-    this.socket.addEventListener("close", (event) => {
-      this.connected = false;
-      this._shutdown(socketReason(event, "Соединение закрыто."), { emit: !this.closed });
-    });
-    this.socket.addEventListener("error", () => {
-      // The close event carries the useful code; nothing to do here.
-    });
+    await this._openSocket();
     this._heartbeat = setInterval(() => this._beat(), HEARTBEAT_MS);
     this._heartbeat.unref?.();
   }
 
-  _beat() {
+  async _openSocket() {
+    this.socket = await openSocket(this.url, this.timeout);
+    // A fresh socket gets a fresh server-side budget; restart our own pacing
+    // so a reconnect is not slowed down by the burst that preceded the drop.
+    this._sendBudget = this._makeBudget();
+    this._throttleUntil = 0;
+    this.lastInbound = Date.now();
+    this.socket.addEventListener("message", (event) => this._onRaw(event.data));
+    this.socket.addEventListener("close", (event) => this._onSocketClose(event));
+    this.socket.addEventListener("error", () => {
+      // The close event carries the useful code; nothing to do here.
+    });
+  }
+
+  _onSocketClose() {
+    this.connected = false;
     if (this.closed) return;
+    if (this._resumeWaiter) {
+      const waiter = this._resumeWaiter;
+      this._resumeWaiter = null;
+      waiter.reject(new Error("Соединение оборвалось."));
+    }
+    void this._reconnectLoop();
+  }
+
+  /**
+   * A dropped socket only ends the session when the relay is unreachable for
+   * the whole budget or refuses the resume. Brief drops (deploys, the Vercel
+   * max-duration cut, Wi-Fi blips) are restored transparently.
+   */
+  async _reconnectLoop() {
+    if (this._reconnecting || this.closed) return;
+    if (!this._resumeInfo) {
+      this._shutdown("Соединение с relay потеряно.", { emit: true });
+      return;
+    }
+    this._reconnecting = true;
+    let delay = 700;
+    const deadline = Date.now() + RECONNECT_BUDGET_MS;
+    while (!this.closed) {
+      try {
+        await this._openSocket();
+        await this._resumeSession();
+        this._reconnecting = false;
+        this.connected = true;
+        this.lastInbound = Date.now();
+        this._flushOutbox();
+        this.emit("reconnected", {});
+        return;
+      } catch (error) {
+        if (this.closed) break;
+        if (error && error.terminal) {
+          this._reconnecting = false;
+          this._shutdown(error.message, { emit: true });
+          return;
+        }
+        if (Date.now() > deadline) break;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay = Math.min(Math.round(delay * 1.7), 8_000);
+      }
+    }
+    this._reconnecting = false;
+    if (!this.closed) this._shutdown("Соединение с relay потеряно.", { emit: true });
+  }
+
+  _resumeSession() {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._resumeWaiter = null;
+        reject(new Error("Relay не подтвердил сессию."));
+      }, this.timeout);
+      this._resumeWaiter = {
+        resolve: (frame) => {
+          clearTimeout(timer);
+          this._resumeWaiter = null;
+          resolve(frame);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          this._resumeWaiter = null;
+          reject(error);
+        },
+      };
+      if (!this._sendNow({ type: FRAME_TYPES.RESUME, ...this._resumeInfo })) {
+        clearTimeout(timer);
+        this._resumeWaiter = null;
+        reject(new Error("Соединение оборвалось."));
+      }
+    });
+  }
+
+  _beat() {
+    if (this.closed || this._reconnecting) return;
     if (Date.now() - this.lastInbound > STALE_MS) {
       // Browsers throttle timers in hidden tabs, so a missing inbound frame is
       // not proof of a dead socket there. The close event handles real drops.
@@ -119,7 +227,91 @@ class ChannelAdapter extends Emitter {
   }
 
   _send(frame) {
+    if (this.closed) return false;
+    if (this._reconnecting) {
+      // Keep game frames in order and flush them after the resume lands.
+      if (QUEUEABLE_TYPES.has(frame.type) && this._outbox.length < OUTBOX_LIMIT) {
+        this._outbox.push(frame);
+      }
+      return true;
+    }
+    if (frame.type === FRAME_TYPES.PING) {
+      // Liveness probes are never queued: skip them while paused or dry.
+      if (Date.now() < this._throttleUntil) return true;
+      if (!this._sendBudget.take(1).ok) return true;
+      return this._sendNow(frame);
+    }
+    this._queue(frame);
+    this._drain();
+    return true;
+  }
+
+  /**
+   * Outbound pacing. Frames past the token budget are parked in a bounded
+   * FIFO queue and sent as the budget refills, so a burst of fast messages is
+   * spaced out client-side instead of being dropped (or killing the session)
+   * on the relay.
+   */
+  _makeBudget() {
+    return new RateLimiter({ capacity: CLIENT_BURST, refillPerSec: CLIENT_REFILL_PER_SEC });
+  }
+
+  _queue(frame) {
+    if (this._pending.length >= PENDING_FRAME_LIMIT) this._pending.shift();
+    this._pending.push(frame);
+  }
+
+  _drain() {
+    if (this.closed || this._reconnecting) return;
+    if (this._drainTimer) {
+      clearTimeout(this._drainTimer);
+      this._drainTimer = null;
+    }
+    while (this._pending.length) {
+      if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+      const now = Date.now();
+      if (now < this._throttleUntil) {
+        this._scheduleDrain(this._throttleUntil - now + 60);
+        return;
+      }
+      const ticket = this._sendBudget.take(1);
+      if (!ticket.ok) {
+        this._scheduleDrain(Math.max(ticket.retryAfter, 60));
+        return;
+      }
+      const frame = this._pending.shift();
+      const sent = this._sendNow(frame);
+      if (!sent && (!this.socket || this.socket.readyState !== WebSocket.OPEN)) return;
+      // A refused frame (e.g. oversized payload) is dropped with an error
+      // event; the rest of the queue must keep flowing.
+    }
+  }
+
+  _scheduleDrain(delay) {
+    if (this._drainTimer || this.closed) return;
+    this._drainTimer = setTimeout(() => {
+      this._drainTimer = null;
+      this._drain();
+    }, Math.max(0, delay));
+    this._drainTimer?.unref?.();
+  }
+
+  /** Transient relay backpressure: pause briefly, never drop the session. */
+  _onThrottle(frame) {
+    const hinted = Number(frame.retryAfterMs);
+    const pauseMs = Number.isFinite(hinted) && hinted > 0 ? Math.min(hinted, 10_000) : 1_000;
+    this._throttleUntil = Math.max(this._throttleUntil, Date.now() + pauseMs + 100);
+    this._scheduleDrain(pauseMs + 150);
+  }
+
+  _sendNow(frame) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return false;
+    if (frame.type === FRAME_TYPES.RELAY && payloadTooLarge(frame.payload)) {
+      // Mirror the relay's limit client-side: an oversized payload must be a
+      // visible error, never a session-killing deny from the server.
+      this.emit("error", new Error("Слишком большое сообщение."));
+      return false;
+    }
     const text = safeStringify({ v: PROTOCOL_VERSION, ...frame }, MAX_FRAME_CHARS);
     if (!text) {
       this.emit("error", new Error("Слишком большое сообщение."));
@@ -133,12 +325,40 @@ class ChannelAdapter extends Emitter {
     }
   }
 
+  _flushOutbox() {
+    for (const frame of this._outbox.splice(0, this._outbox.length)) this._queue(frame);
+    this._drain();
+  }
+
   _onRaw(raw) {
     if (this.closed) return;
     if (typeof raw !== "string" || raw.length > MAX_FRAME_CHARS) return;
     const frame = safeJsonParse(raw);
     if (!isObject(frame) || typeof frame.type !== "string") return;
     this.lastInbound = Date.now();
+    if (frame.type === FRAME_TYPES.THROTTLE) {
+      this._onThrottle(frame);
+      return;
+    }
+    if (this._resumeWaiter) {
+      if (frame.type === FRAME_TYPES.WELCOME) {
+        const accepted = this._acceptWelcome(frame);
+        if (accepted === false) {
+          const error = new Error("Сессия не найдена.");
+          error.terminal = true;
+          this._resumeWaiter.reject(error);
+        } else {
+          this._resumeWaiter.resolve(frame);
+        }
+        return;
+      }
+      if (frame.type === FRAME_TYPES.DENIED) {
+        const error = new Error(textOf(frame.reason, "Комната закрыта."));
+        error.terminal = true;
+        this._resumeWaiter.reject(error);
+        return;
+      }
+    }
     this._handleFrame(frame);
   }
 
@@ -148,6 +368,16 @@ class ChannelAdapter extends Emitter {
     this.connected = false;
     clearInterval(this._heartbeat);
     this._heartbeat = null;
+    if (this._drainTimer) {
+      clearTimeout(this._drainTimer);
+      this._drainTimer = null;
+    }
+    this._pending = [];
+    if (this._resumeWaiter) {
+      const waiter = this._resumeWaiter;
+      this._resumeWaiter = null;
+      waiter.reject(new Error(textOf(reason, "Соединение закрыто.")));
+    }
     try {
       if (notifyServer && this.socket?.readyState === WebSocket.OPEN) this.socket.close(1000, "bye");
       else if (this.socket?.readyState === WebSocket.OPEN) this.socket.close(1000, "bye");
@@ -159,6 +389,12 @@ class ChannelAdapter extends Emitter {
       this.emit("closed", { reason: textOf(reason, "Соединение закрыто.") });
     }
   }
+
+  /** Store the resume token from a WELCOME frame. Subclasses override. */
+  _saveResume() {}
+
+  /** Apply a resumed WELCOME after a reconnect. Subclasses override. */
+  _acceptWelcome() {}
 
   _handleFrame() {}
 }
@@ -201,12 +437,31 @@ export class OnlineHostAdapter extends ChannelAdapter {
     });
   }
 
+  /** The host fans out ~one frame per peer per tick: it needs a wider budget. */
+  _makeBudget() {
+    return new RateLimiter({ capacity: HOST_BURST, refillPerSec: HOST_REFILL_PER_SEC });
+  }
+
+  _saveResume(frame) {
+    if (typeof frame?.token !== "string" || !frame.token || !this.selfId) return;
+    this._resumeInfo = { room: this.code, peerId: this.selfId, token: frame.token };
+  }
+
+  _acceptWelcome(frame) {
+    if (frame.host !== true) return false;
+    if (typeof frame.selfId === "string") this.selfId = frame.selfId;
+    if (isValidRoomCode(frame.room)) this.code = frame.room;
+    this._saveResume(frame);
+    return true;
+  }
+
   _handleFrame(frame) {
     switch (frame.type) {
       case FRAME_TYPES.WELCOME: {
         if (frame.host !== true) return;
         this.selfId = typeof frame.selfId === "string" ? frame.selfId : "";
         this.code = isValidRoomCode(frame.room) ? frame.room : this.requestedCode;
+        this._saveResume(frame);
         this.connected = true;
         clearTimeout(this._connectTimer);
         this._connectResolve?.({ selfId: this.selfId, code: this.code, meta: frame.meta ?? null });
@@ -302,7 +557,9 @@ export class OnlineHostAdapter extends ChannelAdapter {
 
   close(reason = "Хост закрыл комнату.") {
     if (this.closed) return;
-    this._send({ type: FRAME_TYPES.CLOSE, reason: String(reason).slice(0, 120) });
+    // The goodbye must leave before the socket is torn down; the send pacing
+    // could still be holding it in the queue.
+    this._sendNow({ type: FRAME_TYPES.CLOSE, reason: String(reason).slice(0, 120) });
     this._shutdown(reason, { emit: true });
   }
 }
@@ -348,6 +605,21 @@ export class OnlineGuestAdapter extends ChannelAdapter {
     });
   }
 
+  _saveResume(frame) {
+    if (typeof frame?.token !== "string" || !frame.token || !this.selfId) return;
+    this._resumeInfo = { room: this.code, peerId: this.selfId, token: frame.token };
+  }
+
+  _acceptWelcome(frame) {
+    if (frame.host === true) return false;
+    if (typeof frame.selfId === "string") this.selfId = frame.selfId;
+    if (typeof frame.hostId === "string") this.hostId = frame.hostId;
+    if (isValidRoomCode(frame.room)) this.code = frame.room;
+    this._welcome = frame;
+    this._saveResume(frame);
+    return true;
+  }
+
   _handleFrame(frame) {
     switch (frame.type) {
       case FRAME_TYPES.WELCOME: {
@@ -355,6 +627,7 @@ export class OnlineGuestAdapter extends ChannelAdapter {
         this.selfId = typeof frame.selfId === "string" ? frame.selfId : "";
         this.hostId = typeof frame.hostId === "string" ? frame.hostId : "";
         this.code = isValidRoomCode(frame.room) ? frame.room : this.code;
+        this._saveResume(frame);
         this.connected = true;
         this._welcome = frame;
         clearTimeout(this._connectTimer);

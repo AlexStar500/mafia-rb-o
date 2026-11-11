@@ -1,4 +1,5 @@
 import {
+  healthUrl,
   isHttpRelayUrl,
   normalizeHttpRelayUrl,
   normalizeRelayEndpoint,
@@ -6,28 +7,33 @@ import {
 
 /**
  * Public room relay. The game itself is a static site (GitHub Pages / custom
- * domain); the relay runs on Vercel. A Cloudflare Worker is kept as a fallback
- * proxy for networks where the raw `*.vercel.app` edges are blocked.
- *
- * `PUBLIC_HTTP_RELAY` (Vercel) is tried first — one hop, lowest latency — and
- * `PUBLIC_HTTP_RELAY_WORKER` is the no-VPN fallback that proxies to Vercel.
+ * domain); the relay is a WebSocket server on Vercel and clients connect to
+ * it directly. The custom domain (a plain CNAME to the same deployment) is
+ * kept as an alternate entry point.
  */
+export const PUBLIC_WS_RELAY_DIRECT = "wss://mafiarbovercel.vercel.app/api/ws";
+export const PUBLIC_WS_RELAY = "wss://relay.mafia.rb-o.ru/api/ws";
+const PUBLIC_WS_RELAYS = [PUBLIC_WS_RELAY_DIRECT, PUBLIC_WS_RELAY];
+
+/** Legacy HTTP-polling addresses, kept so old invite links stay recognisable. */
 export const PUBLIC_HTTP_RELAY = "https://mafiarbovercel.vercel.app/api";
 export const PUBLIC_HTTP_RELAY_CUSTOM = "https://relay.mafia.rb-o.ru/api";
-export const PUBLIC_HTTP_RELAY_WORKER = "https://mafia.aleshkalarin2002.workers.dev/api";
 
-async function probeHttpBase(base, timeout = 1200) {
+/** A WS relay is recognised by its JSON health answer (`/ws` → `<base>/health`). */
+async function probeWsEndpoint(endpoint, timeout = 1500) {
+  const url = healthUrl(endpoint);
+  if (!url) return false;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(`${base}/health`, {
+    const response = await fetch(url, {
       cache: "no-store",
       signal: controller.signal,
       headers: { Accept: "application/json" },
     });
     if (!response.ok) return false;
     const data = await response.json();
-    return data?.ok === true && data?.service === "mafia-relay" && data?.http === true;
+    return data?.ok === true && data?.service === "mafia-relay" && data?.websocket !== false;
   } catch {
     return false;
   } finally {
@@ -35,13 +41,12 @@ async function probeHttpBase(base, timeout = 1200) {
   }
 }
 
-async function publicHttpRelay() {
-  for (const base of [PUBLIC_HTTP_RELAY, PUBLIC_HTTP_RELAY_WORKER, PUBLIC_HTTP_RELAY_CUSTOM]) {
-    if (await probeHttpBase(base)) return base;
+async function publicWsRelay() {
+  for (const endpoint of PUBLIC_WS_RELAYS) {
+    if (await probeWsEndpoint(endpoint)) return endpoint;
   }
-  return PUBLIC_HTTP_RELAY;
+  return PUBLIC_WS_RELAY_DIRECT;
 }
-
 
 /**
  * The same Node process can serve the app and the WebSocket relay. On a laptop
@@ -54,7 +59,17 @@ export function sameOriginRelay() {
   return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`;
 }
 
-/** Vercel (and any static host with an `/api` relay) uses HTTP polling. */
+/**
+ * When the game itself is opened from the Vercel deployment, the relay lives
+ * on the same origin under `/api/ws`.
+ */
+export function sameOriginApiRelay() {
+  if (typeof location === "undefined") return "";
+  if (!/^https?:$/.test(location.protocol) || !location.host) return "";
+  return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/ws`;
+}
+
+/** Vercel (and any static host with an `/api` relay) answers under `/api`. */
 export function sameOriginHttpRelay() {
   if (typeof location === "undefined") return "";
   if (!/^https?:$/.test(location.protocol) || !location.host) return "";
@@ -66,7 +81,7 @@ function wsHealthUrl() {
   return new URL("/health", location.origin).toString();
 }
 
-function httpHealthUrl() {
+function apiHealthUrl() {
   return `${sameOriginHttpRelay()}/health`;
 }
 
@@ -92,20 +107,20 @@ async function probeWsOnce(timeout) {
   }
 }
 
-async function probeHttpOnce(timeout) {
-  const relay = sameOriginHttpRelay();
+async function probeApiOnce(timeout) {
+  const relay = sameOriginApiRelay();
   if (!relay) return "";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(httpHealthUrl(), {
+    const response = await fetch(apiHealthUrl(), {
       cache: "no-store",
       signal: controller.signal,
       headers: { Accept: "application/json" },
     });
     if (!response.ok) return "";
     const data = await response.json();
-    return data?.ok === true && data?.service === "mafia-relay" && data?.http === true ? relay : "";
+    return data?.ok === true && data?.service === "mafia-relay" && data?.websocket !== false ? relay : "";
   } catch {
     return "";
   } finally {
@@ -128,11 +143,11 @@ export async function probeSameOriginRelay({ timeout = 2000, attempts = 2 } = {}
   return last;
 }
 
-export async function probeSameOriginHttpRelay({ timeout = 2000, attempts = 2 } = {}) {
-  if (!sameOriginHttpRelay()) return "";
+export async function probeSameOriginApiRelay({ timeout = 2000, attempts = 2 } = {}) {
+  if (!sameOriginApiRelay()) return "";
   let last = "";
   for (let attempt = 0; attempt < Math.max(1, attempts); attempt += 1) {
-    last = await probeHttpOnce(timeout);
+    last = await probeApiOnce(timeout);
     if (last) return last;
     if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 350));
   }
@@ -142,9 +157,10 @@ export async function probeSameOriginHttpRelay({ timeout = 2000, attempts = 2 } 
 /**
  * Resolve the relay for a room mode.
  * - `lan` always means the WebSocket server that served this page;
- * - `online` prefers an explicit address (HTTP or WS), then a same-origin
- *   HTTP relay (`/api`), then a same-origin WebSocket relay (`/ws`), then the
- *   public Vercel relay — a static site (GitHub Pages) has no `/api` of its own;
+ * - `online` prefers an explicit address (WS, or HTTP for a self-hosted
+ *   polling relay), then a same-origin relay (`/ws` on Node, `/api/ws` on
+ *   Vercel), then the public relay — a static site (GitHub Pages) has no
+ *   relay of its own;
  * - `local` (ports/BroadcastChannel) never needs a relay.
  */
 export async function resolveRelayForMode(mode, explicit = "", options = {}) {
@@ -153,9 +169,9 @@ export async function resolveRelayForMode(mode, explicit = "", options = {}) {
   if (isHttpRelayUrl(explicit)) return normalizeHttpRelayUrl(explicit);
   const clean = normalizeRelayEndpoint(explicit);
   if (clean) return clean;
-  const httpRelay = await probeSameOriginHttpRelay(options);
-  if (httpRelay) return httpRelay;
   const wsRelay = await probeSameOriginRelay(options);
   if (wsRelay) return wsRelay;
-  return publicHttpRelay();
+  const apiRelay = await probeSameOriginApiRelay(options);
+  if (apiRelay) return apiRelay;
+  return publicWsRelay();
 }

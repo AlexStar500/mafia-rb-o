@@ -15,6 +15,8 @@ import {
   MAX_ROOM_MEMBERS,
   MAX_ROOMS,
   PROTOCOL_VERSION,
+  RELAY_BURST,
+  RELAY_REFILL_PER_SEC,
   ROOM_STALE_MS,
   cleanRoomMeta,
   cleanPeer,
@@ -36,6 +38,14 @@ const CLOSE_KICKED = 4001;
 
 const DEFAULT_PATH = "/ws";
 const PRUNE_EVERY = 15_000;
+/**
+ * Serverless edges (Vercel) close every socket when the function hits its
+ * max duration, and any network hiccup drops sockets too. Instead of killing
+ * the room on the first close frame, the relay keeps the seat warm for a
+ * grace window and waits for a `resume` frame from the same peer.
+ */
+const HOST_GRACE_MS = 45_000;
+const GUEST_GRACE_MS = 45_000;
 
 function nowMs() {
   return Date.now();
@@ -95,15 +105,20 @@ export class Relay {
     maxRooms = MAX_ROOMS,
     trustProxy = false,
     logger = console,
+    hostGraceMs = HOST_GRACE_MS,
+    guestGraceMs = GUEST_GRACE_MS,
     now = nowMs,
   } = {}) {
     if (!server) throw new Error("Relay requires an HTTP server");
     this.server = server;
-    this.path = path.startsWith("/") ? path : `/${path}`;
+    const paths = Array.isArray(path) ? path : [path];
+    this.paths = new Set(paths.map((item) => (String(item).startsWith("/") ? String(item) : `/${item}`)));
     this.allowedOrigins = normalizeOrigins(allowedOrigins);
     this.maxRooms = Math.max(4, Math.min(MAX_ROOMS, Number(maxRooms) || MAX_ROOMS));
     this.trustProxy = trustProxy === true;
     this.logger = logger;
+    this.hostGraceMs = Math.max(1_000, Number(hostGraceMs) || HOST_GRACE_MS);
+    this.guestGraceMs = Math.max(1_000, Number(guestGraceMs) || GUEST_GRACE_MS);
     this.now = now;
     this.rooms = new Map();
     this.ipSockets = new Map();
@@ -169,6 +184,7 @@ export class Relay {
         ? {
             ok: true,
             service: "mafia-relay",
+            websocket: true,
             protocol: PROTOCOL_VERSION,
             rooms: this.rooms.size,
             players: [...this.rooms.values()].reduce((sum, room) => sum + room.members.size, 0),
@@ -211,7 +227,7 @@ export class Relay {
       socket.destroy();
       return;
     }
-    if (pathname !== this.path) {
+    if (!this.paths.has(pathname)) {
       socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
@@ -262,7 +278,7 @@ export class Relay {
       ip,
       alive: true,
       lastAt: nowMs(),
-      bucket: tokenBucket(14, 6),
+      bucket: tokenBucket(RELAY_BURST, RELAY_REFILL_PER_SEC),
     };
 
     socket.on("pong", () => {
@@ -291,22 +307,22 @@ export class Relay {
     if (!client) return;
     this._decIp(client.ip);
     const room = client.roomCode ? this.rooms.get(client.roomCode) : null;
-    if (!room) {
-      socket.client = null;
+    socket.client = null;
+    if (!room) return;
+    // The seat stays warm for a grace window: a dropped socket (Vercel max
+    // duration, network blip) is not a leave until the peer fails to resume.
+    if (client.role === "host") {
+      if (room.hostSocket !== socket) return; // already replaced by a resume
+      room.hostSocket = null;
+      room.hostGoneAt = nowMs();
+      room.updatedAt = nowMs();
       return;
     }
-    if (client.role === "host") {
-      this._closeRoom(room, "Хост отключился.", { includeHost: false });
-    } else {
-      room.members.delete(client.id);
-      send(room.hostSocket, {
-        type: FRAME_TYPES.PEER_LEAVE,
-        peerId: client.id,
-        room: room.code,
-      });
-      room.updatedAt = nowMs();
-    }
-    socket.client = null;
+    const member = room.members.get(client.id);
+    if (!member || member.socket !== socket) return; // already replaced
+    member.socket = null;
+    member.goneAt = nowMs();
+    room.updatedAt = nowMs();
   }
 
   _decIp(ip) {
@@ -330,7 +346,19 @@ export class Relay {
       return;
     }
     if (!takeToken(client.bucket)) {
-      deny(socket, "Слишком много запросов. Подождите секунду.");
+      // Backpressure, not a policy violation. A deny would end the client's
+      // whole session, so a burst of fast messages must never be fatal: ask
+      // the client to pause briefly instead.
+      const deficit = Math.max(1 - client.bucket.tokens, 1 / client.bucket.refillPerSec);
+      const retryAfterMs = Math.min(
+        10_000,
+        Math.max(250, Math.ceil((deficit / client.bucket.refillPerSec) * 1000)),
+      );
+      send(socket, {
+        type: FRAME_TYPES.THROTTLE,
+        reason: "Слишком много запросов. Подождите секунду.",
+        retryAfterMs,
+      });
       return;
     }
     const frame = parseFrame(text);
@@ -345,6 +373,9 @@ export class Relay {
         break;
       case FRAME_TYPES.JOIN:
         this._handleJoin(socket, frame);
+        break;
+      case FRAME_TYPES.RESUME:
+        this._handleResume(socket, frame);
         break;
       case FRAME_TYPES.RELAY:
         this._handleRelay(socket, room, frame);
@@ -405,6 +436,7 @@ export class Relay {
     }
 
     const hostId = relayId("h");
+    const hostToken = relayId("t");
     const meta = cleanRoomMeta({
       ...(isObject(frame.meta) ? frame.meta : {}),
       code,
@@ -416,7 +448,10 @@ export class Relay {
     const room = {
       code,
       hostId,
+      hostToken,
+      hostIp: client.ip,
       hostSocket: socket,
+      hostGoneAt: 0,
       hostName: meta.hostName,
       meta,
       members: new Map(),
@@ -436,6 +471,7 @@ export class Relay {
       room: code,
       host: true,
       hostId,
+      token: hostToken,
       meta: room.meta,
       now: nowMs(),
     });
@@ -455,8 +491,12 @@ export class Relay {
       return;
     }
     if (!this._hostAlive(room)) {
-      this._closeRoom(room, "Хост отключился.");
-      deny(socket, "Комната закрыта.");
+      // A detached host gets a grace window to resume; don't kill the room.
+      if (!room.hostGoneAt) this._closeRoom(room, "Хост отключился.");
+      deny(
+        socket,
+        room.hostGoneAt ? "Хост переподключается. Попробуйте через пару секунд." : "Комната закрыта.",
+      );
       return;
     }
     if (room.members.size + 1 >= MAX_ROOM_MEMBERS) {
@@ -471,7 +511,15 @@ export class Relay {
       spectate: frame.spectate === true,
     });
 
-    room.members.set(peer.id, { id: peer.id, socket, joinedAt: nowMs() });
+    room.members.set(peer.id, {
+      id: peer.id,
+      socket,
+      token: relayId("t"),
+      info: peer,
+      joinedAt: nowMs(),
+      goneAt: 0,
+    });
+    const member = room.members.get(peer.id);
     room.updatedAt = nowMs();
     client.id = peer.id;
     client.roomCode = room.code;
@@ -485,6 +533,7 @@ export class Relay {
       host: false,
       hostId: room.hostId,
       spectate: peer.spectate,
+      token: member.token,
       meta: room.meta,
       now: nowMs(),
     });
@@ -500,6 +549,96 @@ export class Relay {
       room: room.code,
     });
     this.logger?.info?.(`[relay] ${peer.name} joined ${room.code}`);
+  }
+
+  /**
+   * Rebind a dropped peer to a fresh socket. The client proves ownership with
+   * the token it received in the original WELCOME, so a room code alone is
+   * not enough to hijack a seat.
+   */
+  _handleResume(socket, frame) {
+    const client = socket.client;
+    if (!client || client.roomCode) {
+      deny(socket, "Вы уже в комнате.");
+      return;
+    }
+    const code = typeof frame.room === "string" ? frame.room.toUpperCase() : "";
+    const room = isValidRoomCode(code) ? this.rooms.get(code) : null;
+    if (!room) {
+      deny(socket, "Комната не найдена.");
+      return;
+    }
+    const peerId = typeof frame.peerId === "string" ? frame.peerId : "";
+    const token = typeof frame.token === "string" ? frame.token : "";
+
+    if (peerId === room.hostId) {
+      if (!token || token !== room.hostToken) {
+        deny(socket, "Сессия не найдена.");
+        return;
+      }
+      const previous = room.hostSocket;
+      room.hostSocket = socket;
+      room.hostGoneAt = 0;
+      room.updatedAt = nowMs();
+      client.id = room.hostId;
+      client.roomCode = room.code;
+      client.role = "host";
+      if (previous && previous !== socket) {
+        try {
+          previous.close(CLOSE_NORMAL, "Replaced");
+        } catch {
+          // ignore
+        }
+      }
+      send(socket, {
+        type: FRAME_TYPES.WELCOME,
+        protocol: PROTOCOL_VERSION,
+        selfId: room.hostId,
+        room: room.code,
+        host: true,
+        hostId: room.hostId,
+        token: room.hostToken,
+        meta: room.meta,
+        resumed: true,
+        now: nowMs(),
+      });
+      this.logger?.info?.(`[relay] host resumed ${room.code}`);
+      return;
+    }
+
+    const member = room.members.get(peerId);
+    if (!member || !token || token !== member.token) {
+      deny(socket, "Сессия не найдена.");
+      return;
+    }
+    const previous = member.socket;
+    member.socket = socket;
+    member.goneAt = 0;
+    room.updatedAt = nowMs();
+    client.id = member.id;
+    client.roomCode = room.code;
+    client.role = "guest";
+    if (previous && previous !== socket) {
+      try {
+        previous.close(CLOSE_NORMAL, "Replaced");
+      } catch {
+        // ignore
+      }
+    }
+    send(socket, {
+      type: FRAME_TYPES.WELCOME,
+      protocol: PROTOCOL_VERSION,
+      selfId: member.id,
+      room: room.code,
+      host: false,
+      hostId: room.hostId,
+      spectate: member.info.spectate,
+      token: member.token,
+      meta: room.meta,
+      resumed: true,
+      now: nowMs(),
+    });
+    this.logger?.info?.(`[relay] ${member.info.name} resumed ${room.code}`);
   }
 
   _handleRelay(socket, room, frame) {
@@ -584,10 +723,11 @@ export class Relay {
     const reason = String(frame.reason ?? "Вас исключили из комнаты.").slice(0, 120);
     send(member.socket, { type: FRAME_TYPES.DENIED, reason });
     try {
-      member.socket.close(CLOSE_KICKED, reason.slice(0, 100));
+      member.socket?.close(CLOSE_KICKED, reason.slice(0, 100));
     } catch {
       // ignore
     }
+    member.socket = null;
     room.members.delete(targetId);
     send(room.hostSocket, { type: FRAME_TYPES.PEER_LEAVE, peerId: targetId, room: room.code });
   }
@@ -616,7 +756,7 @@ export class Relay {
   _closeRoom(room, reason, { includeHost = false } = {}) {
     if (!room || !this.rooms.has(room.code)) return;
     this.rooms.delete(room.code);
-    const ip = room.hostSocket?.client?.ip;
+    const ip = room.hostIp ?? room.hostSocket?.client?.ip;
     if (ip) {
       const count = (this.ipRooms.get(ip) ?? 1) - 1;
       if (count <= 0) this.ipRooms.delete(ip);
@@ -626,7 +766,7 @@ export class Relay {
     for (const member of room.members.values()) {
       send(member.socket, { type: FRAME_TYPES.CLOSED, reason });
       try {
-        member.socket.close(CLOSE_NORMAL, "Room closed");
+        member.socket?.close(CLOSE_NORMAL, "Room closed");
       } catch {
         // ignore
       }
@@ -644,18 +784,32 @@ export class Relay {
   _prune() {
     const now = nowMs();
     for (const [code, room] of [...this.rooms]) {
-      if (!this._hostAlive(room)) {
-        this._closeRoom(room, "Хост отключился.");
-        continue;
+      if (room.hostSocket && room.hostSocket.readyState !== OPEN) {
+        // The close event may not have fired yet; treat it as detached.
+        room.hostSocket = null;
+        room.hostGoneAt = room.hostGoneAt || now;
       }
-      if (now - room.updatedAt > ROOM_STALE_MS) {
+      if (!room.hostSocket) {
+        if (!room.hostGoneAt) room.hostGoneAt = now;
+        if (now - room.hostGoneAt > this.hostGraceMs) {
+          this._closeRoom(room, "Хост отключился.");
+          continue;
+        }
+      } else if (now - room.updatedAt > ROOM_STALE_MS) {
         this._closeRoom(room, "Комната закрыта из-за неактивности.");
         continue;
       }
       for (const member of [...room.members.values()]) {
-        if (member.socket.readyState !== OPEN) {
-          room.members.delete(member.id);
-          send(room.hostSocket, { type: FRAME_TYPES.PEER_LEAVE, peerId: member.id, room: code });
+        if (member.socket && member.socket.readyState !== OPEN) {
+          member.socket = null;
+          member.goneAt = member.goneAt || now;
+        }
+        if (!member.socket) {
+          if (!member.goneAt) member.goneAt = now;
+          if (now - member.goneAt > this.guestGraceMs) {
+            room.members.delete(member.id);
+            send(room.hostSocket, { type: FRAME_TYPES.PEER_LEAVE, peerId: member.id, room: code });
+          }
         }
       }
       room.updatedAt = now;

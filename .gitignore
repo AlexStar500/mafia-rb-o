@@ -13,3 +13,4 @@ test-results/
 .vscode/
 .idea/
 *.wav
+download/

@@ -29,9 +29,26 @@ export const STALE_MS = 34_000;
 export const MAX_ACTIONS_PER_SEC = 6;
 export const MAX_IP_CONNECTIONS = 24;
 
+/**
+ * Per-socket frame budgets. The relay drops frames past its budget and asks
+ * the client to slow down with a transient `throttle` frame — never a fatal
+ * deny. Clients pace their own sends under the same budget, so legitimate
+ * bursts (fast chat, host fan-out) are queued and delivered, not dropped.
+ */
+export const RELAY_BURST = 48;
+export const RELAY_REFILL_PER_SEC = 24;
+export const CLIENT_BURST = 32;
+export const CLIENT_REFILL_PER_SEC = 12;
+/** Hosts fan out roughly one frame per peer per tick, so they get more room. */
+export const HOST_BURST = 40;
+export const HOST_REFILL_PER_SEC = 20;
+/** Bound for frames parked while the send budget refills. */
+export const PENDING_FRAME_LIMIT = 200;
+
 export const FRAME_TYPES = Object.freeze({
   CREATE: "create",
   JOIN: "join",
+  RESUME: "resume",
   WELCOME: "welcome",
   PEER_JOIN: "peer-join",
   PEER_LEAVE: "peer-leave",
@@ -41,6 +58,8 @@ export const FRAME_TYPES = Object.freeze({
   CLOSE: "close",
   CLOSED: "closed",
   DENIED: "denied",
+  /** Transient backpressure: the frame was dropped, retry after retryAfterMs. */
+  THROTTLE: "throttle",
   PING: "ping",
   PONG: "pong",
   LIST: "list",

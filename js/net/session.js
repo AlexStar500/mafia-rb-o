@@ -321,6 +321,13 @@ export class HostSession extends BaseSession {
     this._track(adapter.on("leave", ({ peerId }) => this._onPeerLeave(peerId)));
     this._track(adapter.on("closed", ({ reason }) => this._onAdapterClosed(reason)));
     this._track(
+      adapter.on("reconnected", () => {
+        // Frames broadcast while the socket was down are gone: push a fresh
+        // state snapshot to every guest on the next tick.
+        this._dirty = true;
+      }),
+    );
+    this._track(
       adapter.on("error", (error) => {
         this.emit("notice", { tone: "danger", text: error?.message ?? "Ошибка сети." });
       }),
@@ -361,7 +368,10 @@ export class HostSession extends BaseSession {
   _welcomePayload(peer) {
     const viewerId = peer.playerId ?? null;
     const view = this._viewFor(peer);
-    const chat = visibleChat(this.engine, viewerId, 140);
+    // 60 recent messages keep the serialized payload well under the relay's
+    // 30k-character frame budget even for Cyrillic text; a longer history
+    // would make the welcome frame undeliverable.
+    const chat = visibleChat(this.engine, viewerId, 60);
     return {
       type: "welcome",
       protocol: 2,
@@ -840,6 +850,13 @@ export class GuestSession extends BaseSession {
         this.closed = true;
         this._cleanup();
         this._emitClosed(reason);
+      }),
+    );
+    this._track(
+      adapter.on("reconnected", () => {
+        // Anything sent while the socket was down is lost; ask the host for a
+        // full resync instead of trusting the cached view.
+        this._requestSync();
       }),
     );
 

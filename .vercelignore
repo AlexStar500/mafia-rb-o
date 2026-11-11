@@ -3,7 +3,6 @@ node_modules
 .github
 .vscode
 test
-server
 scripts
 assets/ascl
 *.wav
